@@ -117,6 +117,10 @@ if ! [ -x "$(command -v zsh)" ]; then
   echo -n 'Installing zsh...'
   echoed_apt_install zsh
   sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended > /dev/null
+
+  # plugins
+  git clone --quiet https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions > /dev/null
+  git clone --quiet https://github.com/zsh-users/zsh-syntax-highlighting ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting > /dev/null
 fi
 zsh --version
 
@@ -159,10 +163,10 @@ if ! [ -x "$(command -v nvm)" ]; then
   curl -s https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh -o /tmp/nvm-install
   chmod +x /tmp/nvm-install && /tmp/nvm-install > /dev/null
   export NVM_DIR="$HOME/.nvm"
-  source ~/.nvm/nvm.sh
+  source ~/.nvm/nvm.sh > /dev/null
 fi
 
-nvm install node &> /dev/null
+nvm install node > /dev/null
 echo "nvm $(nvm --version)"
 echo "node $(node --version)"
 echo "npm $(npm --version)"
@@ -282,7 +286,7 @@ tex -v | head -n 1
 if ! [ -x "$(command -v pandoc)" ]; then
   echo -n 'Installing pandoc...'
   curl -sL https://github.com/jgm/pandoc/releases/download/3.1.11/pandoc-3.1.11-1-amd64.deb -o /tmp/pandoc.deb
-  sudo dpkg -i /tmp/pandoc.deb
+  sudo dpkg -i /tmp/pandoc.deb > /dev/null
 fi
 pandoc -v | head -n 1
 
@@ -305,15 +309,23 @@ echoed_snap_install android-studio --classic
 printf "$SEPARATOR\nInstalling CTF dependencies...\n\n"
 
 sudo DEBIAN_FRONTEND=noninteractive apt-get -y install wireshark > /dev/null && (wireshark -v | head -n 1)
+echoed_apt_install ltrace
 echoed_apt_install hexedit
 echoed_apt_install hexyl
 echoed_apt_install gobuster
+echoed_apt_install john
 echoed_apt_install nmap 'nmap --version | head -n 1'
 echoed_apt_install hashcat
 echoed_apt_install checksec
 echoed_apt_install steghide
 echoed_apt_install exiftool
-echoed_apt_install john
+echoed_apt_install pngcheck
+echoed_apt_install pngtools
+echoed_apt_install zbar-tools
+echoed_apt_install z3
+echoed_apt_install foremost
+echoed_apt_install aircrack-ng
+sudo gem install zsteg
 
 # ctf python packages
 echo 'Installing CTF python packages...'
@@ -322,10 +334,15 @@ if ! conda info --envs | grep -q ctf-base; then
   echo 'creating ctf-base conda env...'
   conda create --name ctf-base -y > /dev/null
 fi
+
 eval "$(conda shell.bash hook)"
 conda activate ctf-base
+
 conda install -c conda-forge pwntools -y > /dev/null && py_pkg_version pwntools
 pip3 install angr > /dev/null && py_pkg_version angr
+pip3 install uncompyle6 > /dev/null && py_pkg_version uncompyle6
+pip3 install ROPgadget > /dev/null && py_pkg_version ROPgadget
+
 conda activate base
 
 # metasploit
@@ -356,24 +373,13 @@ echo "seclists"
 # pycdc
 if ! [ -x "$(command -v /opt/pycdc/pycdc)" ]; then
   echo -n 'Installing pycdc...'
-  git clone --quiet https://github.com/zrax/pycdc.git /opt/pycdc > /dev/null
+  sudo git clone --quiet https://github.com/zrax/pycdc.git /opt/pycdc > /dev/null
   pushd ./ > /dev/null && cd /opt/pycdc
-  cmake . > /dev/null
-  make > /dev/null
+  sudo cmake . > /dev/null
+  sudo make > /dev/null
   popd
 fi
 echo 'pycdc'
-
-# chainsaw
-if ! [ -x "$(command -v /opt/chainsaw/target/release/chainsaw)" ]; then
-  echo -n 'Installing chainsaw...'
-  git clone --quiet https://github.com/WithSecureLabs/chainsaw.git /opt/chainsaw > /dev/null
-  pushd ./ > /dev/null && cd /opt/chainsaw
-  cargo build --release -q > /dev/null
-  popd
-  sudo ln -sf /opt/chainsaw/target/release/chainsaw /usr/local/bin/chainsaw
-fi
-chainsaw --version
 
 # pwndbg
 if ! [ -x "$(command -v pwndbg)" ]; then
@@ -382,6 +388,15 @@ if ! [ -x "$(command -v pwndbg)" ]; then
   sudo dpkg -i /tmp/pwndbg.deb > /dev/null
 fi
 echo 'pwndbg'
+
+# stegseek
+if ! [ -x "$(command -v stegseek)" ]; then
+  echo -n 'Installing stegseek...'
+  curl -sL https://github.com/RickdeJager/stegseek/releases/download/v0.6/stegseek_0.6-1.deb -o /tmp/stegseek.deb
+  sudo apt-get -y install libjpeg62 > /dev/null
+  sudo dpkg -i /tmp/stegseek.deb > /dev/null
+fi
+echo 'stegseek 0.6.1'
 
 # hydra
 if ! [ -x "$(command -v hydra)" ]; then
@@ -518,8 +533,7 @@ sudo apt-get autoclean > /dev/null
 # set dotfiles
 echo 'Setting dotfiles...'
 ln -sf "$DOTFILES/.zshrc" ~/.zshrc
-# TODO: vimrc
-# TODO: tmux
+ln -sf "$DOTFILES/.tmux.conf" ~/.tmux.conf
 
 # set shell
 if [ "$SHELL" != "/usr/bin/zsh" ]; then

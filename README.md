@@ -14,6 +14,11 @@ Ideally, I want this to be a standalone setup and not just on a VM.
 - 1 processor, 8 cores per processor
 - XFCE desktop
 
-## Tools
+## TODO:
 
-TODO:
+- firefox bookmarks
+
+## After `setup.sh`
+
+- setup github cli `gh auth login`
+- sign into vscode for env sync
