@@ -1,22 +1,23 @@
 # coulomb
 
-My dev/ctf environment
-
-Based on Debian 12.2.0
-
-Ideally, I want this to be a standalone setup and not just on a VM.
+My WIP dev env
 
 ## VM
 
-- Basic debian install
+Eventually I want this to be a standalone setup and not just on a VM.
+
+- Ubuntu 22.04, minimal install, install 3rd drivers
 - 256GB disk
 - 16GB RAM
 - 1 processor, 8 cores per processor
-- XFCE desktop
 
-## TODO:
+## To Do
 
 - firefox bookmarks
+- additional desktop env config
+- useful aliases
+- vim config
+- follow linux from scratch
 
 ## After `setup.sh`
 
