@@ -18,6 +18,7 @@ Eventually I want this to be a standalone setup and not just on a VM.
 - useful aliases
 - vim config
 - follow linux from scratch
+- FPGA tools
 
 ## After `setup.sh`
 
