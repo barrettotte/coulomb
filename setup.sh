@@ -5,9 +5,7 @@
 set -e
 
 SEPARATOR="\n$(printf '=%.0s' {1..64})"
-SCRIPT=$(realpath "$0")
-SCRIPTPATH=$(dirname "$SCRIPT")
-DOTFILES="$SCRIPTPATH/dotfiles"
+COULOMB="$HOME/coding/repos/coulomb"
 
 trap 'echo "Error occurred on line $LINENO. Last command: $BASH_COMMAND"; exit 1' ERR
 
@@ -119,8 +117,8 @@ if ! [ -x "$(command -v zsh)" ]; then
   sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended > /dev/null
 
   # plugins
-  git clone --quiet https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions > /dev/null
-  git clone --quiet https://github.com/zsh-users/zsh-syntax-highlighting ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting > /dev/null
+  git clone --quiet https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-HOME/.oh-my-zsh/custom}/plugins/zsh-autosuggestions > /dev/null
+  git clone --quiet https://github.com/zsh-users/zsh-syntax-highlighting ${ZSH_CUSTOM:-HOME/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting > /dev/null
 fi
 zsh --version
 
@@ -163,7 +161,7 @@ if ! [ -x "$(command -v nvm)" ]; then
   curl -s https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh -o /tmp/nvm-install
   chmod +x /tmp/nvm-install && /tmp/nvm-install > /dev/null
   export NVM_DIR="$HOME/.nvm"
-  source ~/.nvm/nvm.sh > /dev/null
+  source "$HOME/.nvm/nvm.sh" > /dev/null
 fi
 
 nvm install node > /dev/null
@@ -183,7 +181,7 @@ if ! [ -x "$(command -v conda)" ]; then
   echo -n 'Installing miniconda...'
   curl -s https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -o /tmp/miniconda.sh
   chmod +x /tmp/miniconda.sh && /tmp/miniconda.sh -b -u > /dev/null
-  source ~/miniconda3/bin/activate > /dev/null
+  source "$HOME/miniconda3/bin/activate" > /dev/null
   conda init bash > /dev/null
 fi
 
@@ -363,12 +361,13 @@ ngrok -v
 
 # seclists
 SECLISTS=/usr/share/wordlists
+SECLISTS_VERSION='2023.2'
 if ! [ -d "$SECLISTS" ]; then
-  echo -n 'Installing seclists...'
-  curl -sL https://github.com/danielmiessler/SecLists/archive/refs/tags/2023.2.zip -o /tmp/seclists.zip
+  echo -n "Installing seclists to $SECLISTS..."
+  curl -sL "https://github.com/danielmiessler/SecLists/archive/refs/tags/$SECLISTS_VERSION.zip" -o /tmp/seclists.zip
   sudo mkdir -p "$SECLISTS" && sudo unzip -o /tmp/seclists.zip -d "$SECLISTS" > /dev/null
 fi
-echo "seclists"
+echo "seclists $SECLISTS_VERSION"
 
 # pycdc
 if ! [ -x "$(command -v /opt/pycdc/pycdc)" ]; then
@@ -382,12 +381,13 @@ fi
 echo 'pycdc'
 
 # pwndbg
+PWNDBG_VERSION='2023.07.17'
 if ! [ -x "$(command -v pwndbg)" ]; then
   echo -n 'Installing pwndbg...'
-  curl -sL https://github.com/pwndbg/pwndbg/releases/download/2023.07.17-pkgs/pwndbg_2023.07.17_amd64.deb -o /tmp/pwndbg.deb
+  curl -sL "https://github.com/pwndbg/pwndbg/releases/download/$PWNDBG_VERSION-pkgs/pwndbg_$PWNDBG_VERSION_amd64.deb" -o /tmp/pwndbg.deb
   sudo dpkg -i /tmp/pwndbg.deb > /dev/null
 fi
-echo 'pwndbg'
+echo "pwndbg $PWNDBG_VERSION"
 
 # stegseek
 if ! [ -x "$(command -v stegseek)" ]; then
@@ -399,11 +399,12 @@ fi
 echo 'stegseek 0.6.1'
 
 # hydra
+HYDRA_VERSION='9.5'
 if ! [ -x "$(command -v hydra)" ]; then
   echo -n 'Installing hydra...'
-  curl -sL https://github.com/vanhauser-thc/thc-hydra/archive/refs/tags/v9.5.zip -o /tmp/hydra.zip
+  curl -sL "https://github.com/vanhauser-thc/thc-hydra/archive/refs/tags/v$HYDRA_VERSION.zip" -o /tmp/hydra.zip
   unzip -o /tmp/hydra.zip -d /tmp > /dev/null
-  pushd ./ > /dev/null && cd /tmp/thc-hydra-9.5
+  pushd ./ > /dev/null && cd "/tmp/thc-hydra-$HYDRA_VERSION"
   sudo ./configure > /dev/null
   sudo make > /dev/null
   sudo make install > /dev/null
@@ -412,11 +413,12 @@ fi
 echo -n 'hydra ' && hydra version | head -n 1 | awk '{print $2}'
 
 # binwalk
+BINWALK_VERSION='2.3.4'
 if ! [ -x "$(command -v binwalk)" ]; then
   echo -n 'Installing binwalk...'
-  curl -sL https://github.com/ReFirmLabs/binwalk/archive/refs/tags/v2.3.4.zip -o /tmp/binwalk.zip
+  curl -sL "https://github.com/ReFirmLabs/binwalk/archive/refs/tags/v$BINWALK_VERSION.zip" -o /tmp/binwalk.zip
   sudo unzip -o /tmp/binwalk.zip -d /opt > /dev/null
-  pushd ./ > /dev/null && cd /opt/binwalk-2.3.4
+  pushd ./ > /dev/null && cd "/opt/binwalk-$BINWALK_VERSION"
   sudo python3 setup.py install > /dev/null
   popd
 fi
@@ -440,13 +442,14 @@ fi
 echo "burp suite $BURP_VERSION"
 
 # ghidra
+GHIDRA_VERSION='10.4'
 if ! [ -x "$(command -v ghidra)" ]; then
   echo -n 'Installing ghidra...'
-  curl -sL https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_10.4_build/ghidra_10.4_PUBLIC_20230928.zip -o /tmp/ghidra.zip
+  curl -sL "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_$GHIDRA_VERSION_build/ghidra_$GHIDRA_VERSION_PUBLIC_20230928.zip" -o /tmp/ghidra.zip
   sudo unzip -o /tmp/ghidra.zip -d /opt > /dev/null
-  sudo ln -sf /opt/ghidra_10.4_PUBLIC/ghidraRun /usr/local/bin/ghidra
+  sudo ln -sf "/opt/ghidra_$GHIDRA_VERSION_PUBLIC/ghidraRun" /usr/local/bin/ghidra
 fi
-echo "ghidra 10.4"
+echo "ghidra $GHIDRA_VERSION"
 
 # IDA
 if ! [ -x "$(command -v ida64)" ]; then
@@ -498,12 +501,12 @@ fi
 echo 'arduino'
 
 # platformio
-if ! [ -d "~/.platformio/penv/bin" ]; then
+if ! [ -d "$HOME/.platformio/penv/bin" ]; then
   echo -n 'Installing platformio...'
   curl -fsSL https://raw.githubusercontent.com/platformio/platformio-core-installer/master/get-platformio.py -o /tmp/get-platformio.py
   python3 /tmp/get-platformio.py > /dev/null
 fi
-~/.platformio/penv/bin/pio --version
+$HOME/.platformio/penv/bin/pio --version
 
 ###########################
 #   Misc Applications     #
@@ -530,10 +533,20 @@ echo 'Cleaning...'
 sudo apt-get autoremove -y > /dev/null
 sudo apt-get autoclean > /dev/null
 
+# clone coulomb repo for additional setup files
+if ! [ -d "$COULOMB" ]; then
+  echo "Cloning coulomb repo to $COULOMB..."
+  mkdir -p "$HOME/coding/repos"
+  git clone --quiet --depth 1 https://github.com/barrettotte/coulomb.git "$COULOMB" > /dev/null
+else
+  echo "Updating coulomb repo in $COULOMB..."
+  git -C "$COULOMB" pull > /dev/null
+fi
+
 # set dotfiles
 echo 'Setting dotfiles...'
-ln -sf "$DOTFILES/.zshrc" ~/.zshrc
-ln -sf "$DOTFILES/.tmux.conf" ~/.tmux.conf
+ln -sf "$COULOMB/dotfiles/.zshrc" "$HOME/.zshrc"
+ln -sf "$COULOMB/dotfiles/.tmux.conf" "$HOME/.tmux.conf"
 
 # set shell
 if [ "$SHELL" != "/usr/bin/zsh" ]; then
