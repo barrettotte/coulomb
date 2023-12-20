@@ -96,7 +96,7 @@ gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark'
 gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
 
 # favorite apps
-gsettings set org.gnome.shell favorite-apps "['firefox.desktop', ''org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop', 'spotify_spotify.desktop']"
+gsettings set org.gnome.shell favorite-apps "['firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop', 'spotify_spotify.desktop']"
 
 ###########################
 #   Development           #
