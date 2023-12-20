@@ -95,6 +95,9 @@ gsettings set org.gnome.desktop.session idle-delay 0
 gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark'
 gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
 
+# favorite apps
+gsettings set org.gnome.shell favorite-apps "['firefox.desktop', ''org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop', 'spotify_spotify.desktop']"
+
 ###########################
 #   Development           #
 ###########################
@@ -117,8 +120,8 @@ if ! [ -x "$(command -v zsh)" ]; then
   sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended > /dev/null
 
   # plugins
-  git clone --quiet https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-HOME/.oh-my-zsh/custom}/plugins/zsh-autosuggestions > /dev/null
-  git clone --quiet https://github.com/zsh-users/zsh-syntax-highlighting ${ZSH_CUSTOM:-HOME/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting > /dev/null
+  git clone --quiet https://github.com/zsh-users/zsh-autosuggestions "${ZSH_CUSTOM:-HOME/.oh-my-zsh/custom}/plugins/zsh-autosuggestions" > /dev/null
+  git clone --quiet https://github.com/zsh-users/zsh-syntax-highlighting "${ZSH_CUSTOM:-HOME/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting" > /dev/null
 fi
 zsh --version
 
@@ -215,7 +218,7 @@ sdk install gradle > /dev/null && gradle --version > /dev/null && gradle --versi
 sdk install maven > /dev/null && mvn --version | head -n 1
 sdk install groovy > /dev/null && groovy --version
 sdk install kotlin > /dev/null && kotlin -version
-sdk install scala > /dev/null && echo "$(scala --version)"
+sdk install scala > /dev/null && scala --version
 
 # dotnet
 if ! [ -x "$(command -v dotnet)" ]; then
@@ -384,7 +387,7 @@ echo 'pycdc'
 PWNDBG_VERSION='2023.07.17'
 if ! [ -x "$(command -v pwndbg)" ]; then
   echo -n 'Installing pwndbg...'
-  curl -sL "https://github.com/pwndbg/pwndbg/releases/download/$PWNDBG_VERSION-pkgs/pwndbg_$PWNDBG_VERSION_amd64.deb" -o /tmp/pwndbg.deb
+  curl -sL "https://github.com/pwndbg/pwndbg/releases/download/$PWNDBG_VERSION-pkgs/pwndbg_${PWNDBG_VERSION}_amd64.deb" -o /tmp/pwndbg.deb
   sudo dpkg -i /tmp/pwndbg.deb > /dev/null
 fi
 echo "pwndbg $PWNDBG_VERSION"
@@ -445,9 +448,9 @@ echo "burp suite $BURP_VERSION"
 GHIDRA_VERSION='10.4'
 if ! [ -x "$(command -v ghidra)" ]; then
   echo -n 'Installing ghidra...'
-  curl -sL "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_$GHIDRA_VERSION_build/ghidra_$GHIDRA_VERSION_PUBLIC_20230928.zip" -o /tmp/ghidra.zip
+  curl -sL "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${GHIDRA_VERSION}_build/ghidra_${GHIDRA_VERSION}_PUBLIC_20230928.zip" -o /tmp/ghidra.zip
   sudo unzip -o /tmp/ghidra.zip -d /opt > /dev/null
-  sudo ln -sf "/opt/ghidra_$GHIDRA_VERSION_PUBLIC/ghidraRun" /usr/local/bin/ghidra
+  sudo ln -sf "/opt/ghidra_${GHIDRA_VERSION}_PUBLIC/ghidraRun" /usr/local/bin/ghidra
 fi
 echo "ghidra $GHIDRA_VERSION"
 
@@ -478,8 +481,8 @@ if ! [ -x "$(command -v gtkwave)" ]; then
   echo -n 'Installing gtkwave...'
   sudo apt-get -y install gtkwave > /dev/null
   sudo apt-get -y install libcanberra-gtk-module libcanberra-gtk3-module > /dev/null
-  gtkwave --version | head -n 1
 fi
+gtkwave --version | head -n 1
 
 # kicad
 if ! [ -x "$(command -v kicad-cli)" ]; then
@@ -487,8 +490,8 @@ if ! [ -x "$(command -v kicad-cli)" ]; then
   sudo add-apt-repository --yes ppa:kicad/kicad-7.0-releases > /dev/null
   sudo apt-get update > /dev/null
   sudo apt-get -y install --install-recommends kicad > /dev/null
-  echo "kicad $(kicad-cli version)"
 fi
+echo "kicad $(kicad-cli version)"
 
 # arduino
 if ! [ -x "$(command -v arduino)" ]; then
@@ -528,10 +531,17 @@ echoed_snap_install blender --classic
 
 printf "$SEPARATOR\nFinishing up...\n\n"
 
-# cleanup
+# general cleanup
 echo 'Cleaning...'
 sudo apt-get autoremove -y > /dev/null
 sudo apt-get autoclean > /dev/null
+
+# fix deprecated apt-key warnings (if exists)
+# (https://askubuntu.com/questions/1407632/key-is-stored-in-legacy-trusted-gpg-keyring-etc-apt-trusted-gpg)
+for KEY in $(apt-key --keyring /etc/apt/trusted.gpg list | grep -E "(([ ]{1,2}(([0-9A-F]{4}))){10})" | tr -d " " | grep -E "([0-9A-F]){8}\b"); do
+  K=${KEY:(-8)}
+  apt-key export $K | sudo gpg --dearmour -o /etc/apt/trusted.gpg.d/imported-from-trusted-gpg-$K.gpg
+done
 
 # clone coulomb repo for additional setup files
 if ! [ -d "$COULOMB" ]; then

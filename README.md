@@ -15,7 +15,7 @@ Maybe I'll get a nice Thinkpad or something.
 ## Setup Script
 
 ```sh
-wget -O - https://raw.githubusercontent.com/barrettotte/coulomb/master/setup.sh | bash
+wget -q -O - https://raw.githubusercontent.com/barrettotte/coulomb/master/setup.sh | bash
 ```
 
 This script will later use `git clone` to download additional config files like dotfiles from this repo.
