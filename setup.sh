@@ -531,6 +531,10 @@ echoed_snap_install blender --classic
 
 printf "$SEPARATOR\nFinishing up...\n\n"
 
+echo "Updating dependencies..."
+sudo apt-get update > /dev/null
+sudo apt-get -y upgrade > /dev/null
+
 # general cleanup
 echo 'Cleaning...'
 sudo apt-get autoremove -y > /dev/null
