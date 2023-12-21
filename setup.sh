@@ -96,7 +96,7 @@ gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark'
 gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
 
 # favorite apps
-gsettings set org.gnome.shell favorite-apps "['firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop', 'spotify_spotify.desktop']"
+gsettings set org.gnome.shell favorite-apps "['org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop', 'firefox_firefox.desktop', 'code.desktop', 'intellij-idea-community_intellij-idea-community.desktop', 'org.kicad.kicad.desktop', 'spotify_spotify.desktop']"
 
 ###########################
 #   Development           #
@@ -531,21 +531,19 @@ echoed_snap_install blender --classic
 
 printf "$SEPARATOR\nFinishing up...\n\n"
 
-echo "Updating dependencies..."
-sudo apt-get update > /dev/null
-sudo apt-get -y upgrade > /dev/null
-
 # general cleanup
 echo 'Cleaning...'
 sudo apt-get autoremove -y > /dev/null
 sudo apt-get autoclean > /dev/null
 
-# fix deprecated apt-key warnings (if exists)
+# fix deprecated apt-key warnings
 # (https://askubuntu.com/questions/1407632/key-is-stored-in-legacy-trusted-gpg-keyring-etc-apt-trusted-gpg)
-for KEY in $(apt-key --keyring /etc/apt/trusted.gpg list | grep -E "(([ ]{1,2}(([0-9A-F]{4}))){10})" | tr -d " " | grep -E "([0-9A-F]){8}\b"); do
-  K=${KEY:(-8)}
-  apt-key export $K | sudo gpg --dearmour -o /etc/apt/trusted.gpg.d/imported-from-trusted-gpg-$K.gpg
-done
+if apt-key list 2>&1 | grep -q 'Warning: apt-key is deprecated.'; then
+  for KEY in $(apt-key --keyring /etc/apt/trusted.gpg list | grep -E "(([ ]{1,2}(([0-9A-F]{4}))){10})" | tr -d " " | grep -E "([0-9A-F]){8}\b"); do
+    K=${KEY:(-8)}
+    apt-key export $K | sudo gpg --dearmour -o /etc/apt/trusted.gpg.d/imported-from-trusted-gpg-$K.gpg
+  done
+fi
 
 # clone coulomb repo for additional setup files
 if ! [ -d "$COULOMB" ]; then
