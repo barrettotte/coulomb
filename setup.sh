@@ -6,6 +6,7 @@ set -e
 
 SEPARATOR="\n$(printf '=%.0s' {1..64})"
 COULOMB="$HOME/coding/repos/coulomb"
+SECONDS=0
 
 trap 'echo "Error occurred on line $LINENO. Last command: $BASH_COMMAND"; exit 1' ERR
 
@@ -536,15 +537,6 @@ echo 'Cleaning...'
 sudo apt-get autoremove -y > /dev/null
 sudo apt-get autoclean > /dev/null
 
-# fix deprecated apt-key warnings
-# (https://askubuntu.com/questions/1407632/key-is-stored-in-legacy-trusted-gpg-keyring-etc-apt-trusted-gpg)
-if apt-key list 2>&1 | grep -q 'Warning: apt-key is deprecated.'; then
-  for KEY in $(apt-key --keyring /etc/apt/trusted.gpg list | grep -E "(([ ]{1,2}(([0-9A-F]{4}))){10})" | tr -d " " | grep -E "([0-9A-F]){8}\b"); do
-    K=${KEY:(-8)}
-    apt-key export $K | sudo gpg --dearmour -o /etc/apt/trusted.gpg.d/imported-from-trusted-gpg-$K.gpg
-  done
-fi
-
 # clone coulomb repo for additional setup files
 if ! [ -d "$COULOMB" ]; then
   echo "Cloning coulomb repo to $COULOMB..."
@@ -571,4 +563,6 @@ fi
 echo '' && neofetch
 df -h
 
-printf '\nSetup completed. It is highly recommended to reboot now!\n'
+END_SECS=$SECONDS
+printf '\nScript executed in: %d minute(s)\n' "$((END_SECS/60 - 1440  * (END_SECS/86400)))"
+printf 'Setup completed. It is highly recommended to reboot now!\n'
