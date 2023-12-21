@@ -555,7 +555,7 @@ ln -sf "$COULOMB/dotfiles/.tmux.conf" "$HOME/.tmux.conf"
 # set shell
 if [ "$SHELL" != "/usr/bin/zsh" ]; then
   echo "Changing default shell to zsh for user $USER..."
-  chsh -s $(which zsh) $USER
+  sudo chsh -s $(which zsh) $USER
   echo 'Logout and login to finish setting shell.'
 fi
 
