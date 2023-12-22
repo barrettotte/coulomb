@@ -370,11 +370,20 @@ ngrok -v
 SECLISTS=/usr/share/wordlists
 SECLISTS_VERSION='2023.2'
 if ! [ -d "$SECLISTS" ]; then
-  echo -n "Installing seclists to $SECLISTS..."
+  echo -n "Adding seclists to $SECLISTS..."
   curl -sL "https://github.com/danielmiessler/SecLists/archive/refs/tags/$SECLISTS_VERSION.zip" -o /tmp/seclists.zip
   sudo mkdir -p "$SECLISTS" && sudo unzip -o /tmp/seclists.zip -d "$SECLISTS" > /dev/null
 fi
 echo "seclists $SECLISTS_VERSION"
+
+# dirb wordlists
+DIRB_WORDLISTS=/usr/share/wordlists/dirb
+if ! [ -d "$DIRB_WORDLISTS" ]; then
+  echo -n "Adding dirb wordlists to $DIRB_WORDLISTS..."
+  git clone --quiet https://github.com/v0re/dirb.git /tmp/dirb > /dev/null
+  sudo cp -rf /tmp/dirb/wordlists /usr/share/wordlists/dirb
+fi
+echo "dirb wordlists ($DIRB_WORDLISTS)"
 
 # pycdc
 if ! [ -x "$(command -v /opt/pycdc/pycdc)" ]; then
