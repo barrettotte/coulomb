@@ -96,6 +96,9 @@ gsettings set org.gnome.desktop.session idle-delay 0
 gsettings set org.gnome.desktop.interface gtk-theme 'Adwaita-dark'
 gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
 
+# show hidden files
+gsettings set org.gtk.Settings.FileChooser show-hidden true
+
 # favorite apps
 gsettings set org.gnome.shell favorite-apps "['org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop', 'firefox_firefox.desktop', 'code.desktop', 'intellij-idea-community_intellij-idea-community.desktop', 'org.kicad.kicad.desktop', 'spotify_spotify.desktop']"
 

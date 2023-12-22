@@ -29,6 +29,12 @@ This script will later use `git clone` to download additional config files like 
 ## To Do
 
 - firefox bookmarks - ctf and general stuff
+- firefox extensions
+  - uBlock Origin
+  - Dark Reader
+  - Tampermonkey
+  - foxy proxy or switchy omega
+  - Decentraleyes
 - additional desktop env config
 - more useful aliases
 - vim config
