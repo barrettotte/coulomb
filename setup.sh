@@ -559,6 +559,10 @@ else
   git -C "$COULOMB" pull > /dev/null
 fi
 
+# set git config
+git config --global user.name "Barrett Otte"
+git config --global user.email "barrettotte@gmail.com"
+
 # set dotfiles
 echo 'Setting dotfiles...'
 ln -sf "$COULOMB/dotfiles/.zshrc" "$HOME/.zshrc"
