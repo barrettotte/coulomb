@@ -561,6 +561,7 @@ fi
 git config --global user.name "Barrett Otte"
 git config --global user.email "barrettotte@gmail.com"
 git config --global pull.rebase false
+gh config set git_protocol ssh -h github.com
 
 # set dotfiles
 echo 'Setting dotfiles...'

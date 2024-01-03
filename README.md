@@ -25,6 +25,7 @@ This script will later use `git clone` to download additional config files like 
 - setup github cli `gh auth login`
 - sign into vscode for env sync
 - add new access token to Github
+- fetch all repos - `./get-repos.sh`
 
 ## To Do
 
@@ -32,13 +33,12 @@ This script will later use `git clone` to download additional config files like 
 - firefox extensions
   - uBlock Origin
   - Dark Reader
-  - Tampermonkey
   - foxy proxy or switchy omega
   - Decentraleyes
+  - Tampermonkey
 - additional desktop env config
 - more useful aliases
 - vim config
 - FPGA tools
 - CUDA?
-- python script to clone all user's repos to `~/coding/repos`
 - complete [Linux From Scratch](https://www.linuxfromscratch.org/)
