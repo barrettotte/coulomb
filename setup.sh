@@ -116,6 +116,7 @@ echoed_apt_install tmux 'tmux -V'
 echoed_apt_install jq 'jq --version'
 echoed_apt_install cmake 'cmake --version | head -n 1'
 echoed_apt_install qemu-system 'qemu-system-x86_64 --version | head -n 1'
+echoed_apt_install gcc-aarch64-linux-gnu
 
 # zsh
 if ! [ -x "$(command -v zsh)" ]; then
@@ -565,8 +566,10 @@ git config --global user.email "barrettotte@gmail.com"
 
 # set dotfiles
 echo 'Setting dotfiles...'
-ln -sf "$COULOMB/dotfiles/.zshrc" "$HOME/.zshrc"
-ln -sf "$COULOMB/dotfiles/.tmux.conf" "$HOME/.tmux.conf"
+DOTFILES="$COULOMB/dotfiles/"
+ln -sf "$DOTFILES/.zshrc" "$HOME/.zshrc"
+ln -sf "$DOTFILES/.tmux.conf" "$HOME/.tmux.conf"
+ln -sf "$DOTFILES/.config/gtk-3.0/bookmarks" "$HOME/.config/gtk-3.0/bookmarks"
 
 # set shell
 if [ "$SHELL" != "/usr/bin/zsh" ]; then
