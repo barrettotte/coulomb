@@ -555,15 +555,12 @@ if ! [ -d "$COULOMB" ]; then
   echo "Cloning coulomb repo to $COULOMB..."
   mkdir -p "$HOME/coding/repos"
   git clone --quiet --depth 1 https://github.com/barrettotte/coulomb.git "$COULOMB" > /dev/null
-else
-  echo "Updating coulomb repo in $COULOMB..."
-  git -C "$COULOMB" pull > /dev/null
 fi
 
 # set git config
 git config --global user.name "Barrett Otte"
 git config --global user.email "barrettotte@gmail.com"
-git config --global pull.rebase true
+git config --global pull.rebase false
 
 # set dotfiles
 echo 'Setting dotfiles...'
