@@ -563,6 +563,7 @@ fi
 # set git config
 git config --global user.name "Barrett Otte"
 git config --global user.email "barrettotte@gmail.com"
+git config --global pull.rebase true
 
 # set dotfiles
 echo 'Setting dotfiles...'
