@@ -1,0 +1,23 @@
+{
+    "chat.agent.enabled": false,
+    "workbench.secondarySideBar.defaultVisibility": "hidden",
+    "workbench.startupEditor": "none",
+    "workbench.iconTheme": "vscode-icons",
+    "workbench.colorTheme": "Monokai",
+    "editor.fontSize": 14,
+    "editor.wordWrap": "off",
+    "window.zoomLevel": 1,
+    "editor.mouseWheelZoom": true,
+    "explorer.confirmDelete": false,
+    "explorer.confirmDragAndDrop": false,
+    "telemetry.editStats.enabled": false,
+    "telemetry.feedback.enabled": false,
+    "telemetry.telemetryLevel": "off",
+    "dotnetAcquisitionExtension.enableTelemetry": false,
+    "[markdown]": {
+        "editor.wordWrap": "off"
+    },
+    "editor.fontFamily": "'JetBrainsMono Nerd Font', 'Droid Sans Mono', 'monospace', monospace",
+    "editor.fontLigatures": false,
+    "vsicons.dontShowNewVersionMessage": true
+}

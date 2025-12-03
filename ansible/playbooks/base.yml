@@ -1,0 +1,130 @@
+---
+
+# Base playbook to be fully executed once. This requires multiple reboots.
+
+- name: Fedora Kinoite Base Setup
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    # ====================================================
+    # Base Upgrade
+    # ====================================================
+
+    - name: Upgrade system
+      ansible.posix.rpm_ostree_upgrade:
+        allow_downgrade: no
+      register: os_upgrade
+      changed_when: "'No upgrade available' not in os_upgrade.msg"
+
+    - name: End play to allow reboot for system upgrade
+      meta: end_play
+      when: os_upgrade.changed
+
+    # ====================================================
+    # RPM Fusion
+    # ====================================================
+
+    - name: Check if RPM Fusion is already installed
+      shell: >
+        rpm -qa | grep "rpmfusion-free-release"
+      register: rpmfusion_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Install RPM Fusion Release RPMs
+      command: >
+        rpm-ostree install \
+        https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-{{ ansible_distribution_major_version }}.noarch.rpm \
+        https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-{{ ansible_distribution_major_version }}.noarch.rpm
+      when: rpmfusion_check.rc != 0
+      register: rpmfusion_install
+
+    - name: End play to allow reboot for RPM Fusion repos
+      meta: end_play
+      when: rpmfusion_install.changed
+
+    # ====================================================
+    # RPM Fusion Swap
+    # ====================================================
+
+    - name: Check if RPM Fusion generic is already installed
+      shell: >
+        rpm-ostree status --json \
+        | jq '.deployments[] | select(.booted == true) | ."requested-local-packages"' \
+        | grep -w "rpmfusion-free-release"
+      register: rpmfusion_check
+      ignore_errors: true
+
+    - name: Fix RPM Fusion repos if using pinned version
+      shell: >
+        rpm-ostree update \
+        --uninstall rpmfusion-free-release \
+        --uninstall rpmfusion-nonfree-release \
+        --install rpmfusion-free-release \
+        --install rpmfusion-nonfree-release
+      when: rpmfusion_check.stdout is search("[0-9]")
+      register: rpmfusion_swap
+
+    - name: End play to allow reboot for RPM Fusion swap
+      meta: end_play
+      when: rpmfusion_swap.changed
+
+    # ====================================================
+    # Install Drivers and Misc Dependencies
+    # ====================================================
+
+    - name: Add NVIDIA Container Toolkit Repo
+      get_url:
+        url: https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo
+        dest: /etc/yum.repos.d/nvidia-container-toolkit.repo
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Install NVIDIA Drivers and Misc Tools
+      community.general.rpm_ostree_pkg:
+        name:
+          # NVIDIA drivers and CUDA
+          - akmod-nvidia # builds kmod locally (kmod-nvidia has potential to break during upgrades)
+          - xorg-x11-drv-nvidia
+          - xorg-x11-drv-nvidia-cuda
+          - nvidia-container-toolkit
+
+          # Virtualization
+          - qemu-kvm
+          - libvirt
+          - virt-install
+          - virt-manager
+          - edk2-ovmf # UEFI support for Windows 10/11 VMs
+          - bridge-utils
+          - vagrant
+          - vagrant-libvirt
+          - vagrant-sshfs
+
+          # Containerization
+          - distrobox
+          - toolbox
+          - podman
+
+          # Misc Tools
+          - curl
+          - git
+          - zsh
+          - tmux
+        state: present
+      register: pkg_install
+
+    - name: Apply NVIDIA kernel arguments
+      command: >
+        rpm-ostree kargs \
+        --append-if-missing=rd.driver.blacklist=nouveau,nova-core \
+        --append-if-missing=modprobe.blacklist=nouveau,nova-core \
+        --append-if-missing=nvidia-drm.modeset=1 \
+        --append-if-missing=initcall_blacklist=simpledrm_platform_driver_init
+      register: kargs_update
+      changed_when: "kargs_update.rc == 0 and 'No changes' not in kargs_update.stdout"
+
+    - name: End play to allow reboot for driver/package installation
+      meta: end_play
+      when: pkg_install.changed or kargs_update.changed

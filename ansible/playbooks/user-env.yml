@@ -1,0 +1,68 @@
+---
+
+- name: Fedora Kinoite User Environment Setup
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    # ====================================================
+    # Flatpak
+    # ====================================================
+
+    - name: Add Flathub Remote
+      community.general.flatpak_remote:
+        name: flathub
+        flatpakrepo_url: https://dl.flathub.org/repo/flathub.flatpakrepo
+        state: present
+
+    - name: Install General Applications
+      community.general.flatpak:
+        name:
+          - com.brave.Browser
+          - com.github.tchx84.Flatseal
+          - md.obsidian.Obsidian
+          - org.kde.kamoso
+          - com.spotify.Client
+          - com.usebottles.bottles
+        remote: flathub
+        state: present
+
+    - name: Install Gaming Applications
+      community.general.flatpak:
+        name:
+          - com.discordapp.Discord
+          - com.valvesoftware.Steam
+          - com.obsproject.Studio
+        remote: flathub
+        state: present
+
+    - name: Install Media and 3D Applications
+      community.general.flatpak:
+        name:
+          - org.gimp.GIMP
+          - org.kde.krita
+          - org.inkscape.Inkscape
+          - org.videolan.VLC
+          - org.audacityteam.Audacity
+          - org.kde.kdenlive
+          - org.blender.Blender
+        remote: flathub
+        state: present
+
+    - name: Install CAD Applications
+      community.general.flatpak:
+        name:
+          - org.kicad.KiCad
+          - org.freecad.FreeCAD
+          - com.prusa3d.PrusaSlicer
+          - org.openscad.OpenSCAD
+
+    # ====================================================
+    # TODO: Dotfiles
+    # ====================================================
+
+    # ====================================================
+    # TODO: Distrobox
+    # ====================================================
+

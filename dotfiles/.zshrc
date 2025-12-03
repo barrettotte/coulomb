@@ -1,40 +1,36 @@
-# zsh
+# zsh config
 export ZSH="$HOME/.oh-my-zsh"
-export ZSH_THEME="fishy"
+
+DISABLE_UNTRACKED_FILES_DIRTY="true"
+ZSH_THEME="fishy"
+# https://github.com/ohmyzsh/ohmyzsh/wiki/themes
+
 plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
 source $ZSH/oh-my-zsh.sh
 
-# path
-export PATH=$PATH:~/.local/bin
-
-# go
-export PATH=$PATH:/usr/local/go/bin
-export PATH=$PATH:$(go env GOPATH)/bin
-
-# rust
-export RUST_BACKTRACE=full
-
-# sdkman
-export SDKMAN_DIR="$HOME/.sdkman"
-[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
-
-# conda (contents within this block are managed by 'conda init')
-__conda_setup="$('/home/barrett/miniconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/home/barrett/miniconda3/etc/profile.d/conda.sh" ]; then
-        . "/home/barrett/miniconda3/etc/profile.d/conda.sh"
-    else
-        export PATH="/home/barrett/miniconda3/bin:$PATH"
-    fi
+# Go config
+export GOPATH="$HOME/go"
+if [ -d "$HOME/go/bin" ]; then
+    export PATH="$PATH:$HOME/go/bin"
 fi
-unset __conda_setup
 
-# nvm
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+# host-only config
+if [ -z "$CONTAINER_ID" ]; then
+    # nop
+fi
 
-# aliases
-alias ll="ls -al"
+# prefix for distrobox container prompt
+function distrobox_prompt() {
+    if [[ -n "$CONTAINER_ID" ]]; then
+        echo "%{$fg_bold[cyan]%]%}[$CONTAINER_ID]%{$reset_color%} "
+    fi
+}
+
+# override prompt when in distrobox
+setopt PROMPT_SUBST
+if [[ "$PROMPT" != *'$(distrobox_prompt)'* ]]; then
+    PROMPT='$(distrobox_prompt)'"$PROMPT"
+fi
+
+# add distrobox exported bins
+export PATH="$HOME/.local/bin:$PATH"
