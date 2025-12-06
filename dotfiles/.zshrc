@@ -6,6 +6,7 @@ ZSH_THEME="fishy"
 # https://github.com/ohmyzsh/ohmyzsh/wiki/themes
 
 plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
+export ZSH_COMPDUMP=$ZSH/cache/.zcompdump-$HOST
 source $ZSH/oh-my-zsh.sh
 
 # Go config

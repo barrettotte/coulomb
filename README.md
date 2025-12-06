@@ -56,6 +56,7 @@ on a monitor connected to the 1030. The system kind of gets stuck, but hard powe
   - which-key.nvim
   - move blocks of code (already builtin? I'm dumb)
 - add Konsole profiles and/or shortcuts for opening dev-box
+- mouse and keyboard LEDs don't turn off on shutdown
 - ctf-box
 - embed-box
 - radio-box
@@ -63,6 +64,7 @@ on a monitor connected to the 1030. The system kind of gets stuck, but hard powe
 ## References
 
 - https://docs.fedoraproject.org/en-US/fedora-kinoite/
+  - https://docs.fedoraproject.org/en-US/fedora-kinoite/troubleshooting/#_using_nvidia_drivers
 - https://wiki.archlinux.org/title/Plymouth
 - https://github.com/nvim-lua/kickstart.nvim
 - https://www.nerdfonts.com

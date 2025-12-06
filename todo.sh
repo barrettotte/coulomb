@@ -27,9 +27,9 @@ sudo chown -R barrett:barrett "$HOME/storage"
 # =============================================================================
 
 # Add each drive to /etc/fstab
-# UUID=xxx   /home/barrett/storage/mass   ext4    nofail,x-systemd.automount       0 2
-# UUID=xxx   /home/barrett/storage/code   ext4    nofail,x-systemd.automount       0 2
-# UUID=xxx   /home/barrett/storage/misc   ext4    nofail,x-systemd.automount       0 2
+# UUID=xxx   /home/barrett/storage/mass   ext4    defaults,nofail       0 2
+# UUID=xxx   /home/barrett/storage/code   ext4    defaults,nofail       0 2
+# UUID=xxx   /home/barrett/storage/misc   ext4    defaults,nofail       0 2
 systemctl daemon-reload
 
 # =============================================================================
@@ -103,6 +103,10 @@ ln -snf "$DOTFILES/.tmux.conf" "$HOME/.tmux.conf"
 
 # fix Steam defaulting to wrong GPU
 ln -snf "$DOTFILES/flatpak/overrides/com.valvesoftware.Steam" "$HOME/.local/share/flatpak/overrides/com.valvesoftware.Steam"
+
+# =============================================================================
+# TODO: Virtualization
+# =============================================================================
 
 # =============================================================================
 # Final

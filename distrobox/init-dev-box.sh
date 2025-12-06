@@ -7,6 +7,13 @@ set -ex
 BOX_NAME="dev-box"
 HOST_HOME="/home/$USER"
 DOTFILES="$HOST_HOME/repos/coulomb/dotfiles"
+MARKER_FILE="$HOME/.distrobox-initialized"
+
+# exit if already initialized
+if [ -f "$MARKER_FILE" ]; then
+    echo "$BOX_NAME already initialized. Skipping init script."
+    exit 0
+fi
 
 echo "Initializing $BOX_NAME..."
 echo "Host home: $HOST_HOME"
@@ -38,9 +45,7 @@ sudo pacman -Syu --noconfirm --needed \
     go
 
 # uv - python package manager
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-sed -i '\|\. "\$HOME/.local/bin/env"|d' ~/.zshrc
+curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
 
 # compile/install Microsoft proprietary VS Code (for marketplace/debuggers)
 if ! command -v code &> /dev/null; then
@@ -96,5 +101,6 @@ ln -snf "$DOTFILES/.gitconfig" "$HOME/.gitconfig"
 ln -snf "$DOTFILES/.zshrc" "$HOME/.zshrc"
 ln -snf "$DOTFILES/nvim" "$HOME/.config/nvim"
 
+touch "$MARKER_FILE"
 echo "$BOX_NAME initialization completed."
 echo "restart container or run 'zsh' to start."
