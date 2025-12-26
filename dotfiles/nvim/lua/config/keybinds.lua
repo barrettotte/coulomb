@@ -1,6 +1,6 @@
 
 vim.keymap.set("n", "<leader>cd", vim.cmd.Ex) -- open netrw
-vim.keymap.set('n', '<leader>e', '<Cmd>Neotree toggle<CR>') -- toggle neotree
+vim.keymap.set('n', '<leader>e', '<Cmd>Neotree toggle<CR>') -- toggle neotree ([E]xplorer)
 
 
 -- disable arrow keys in normal mode

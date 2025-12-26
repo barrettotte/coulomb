@@ -35,5 +35,5 @@ vim.opt.list = true
 
 -- sync clipboard between OS and neovim
 vim.schedule(function()
-    vim.opt.clipboard = "unnamedplus"
+  vim.opt.clipboard = "unnamedplus"
 end)

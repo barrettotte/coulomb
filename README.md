@@ -1,6 +1,6 @@
 # Coulomb
 
-Dotfiles and installation scripts for my Fedora Kinoite system.
+My Fedora Kinoite config and dotfiles.
 
 This leverages distrobox heavily to keep the main system clean.
 
@@ -51,15 +51,19 @@ on a monitor connected to the 1030. The system kind of gets stuck, but hard powe
 
 ## TODO:
 
-- neovim
-  - LSP (nvim-lspconfig), autocomplete (nvim-cmp or blink.cmp), linting
-  - which-key.nvim
-  - move blocks of code (already builtin? I'm dumb)
 - add Konsole profiles and/or shortcuts for opening dev-box
 - mouse and keyboard LEDs don't turn off on shutdown
+- add [discord-rpc-bridge](https://github.com/barrettotte/discord-rpc-bridge) auto-install, save `config.json` in dotfiles
+- add wallpaper/lockscreen auto-config
 - ctf-box
 - embed-box
 - radio-box
+- neovim
+  - blocks of text move keybinds
+  - easy tab keybinds
+  - easy embedded terminal (like vscode)
+  - git management (diffs, staging, etc)
+  - probably more theming/styling (double check looks decent in tmux)
 
 ## References
 

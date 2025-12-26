@@ -98,6 +98,9 @@ ln -snf "$DOTFILES/kde/kwinrc" "$HOME/.config/kwinrc"
 ln -snf "$DOTFILES/konsole/default-zsh.profile" "$HOME/.local/share/konsole/default-zsh.profile"
 ln -snf "$DOTFILES/konsole/konsolerc" "$HOME/.config/konsolerc"
 
+# Power management
+ln -snf "$DOTFILES/powerdevilrc" "$HOME/.config/powerdevilrc"
+
 # tmux
 ln -snf "$DOTFILES/.tmux.conf" "$HOME/.tmux.conf"
 

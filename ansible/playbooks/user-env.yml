@@ -25,6 +25,7 @@
           - org.kde.kamoso
           - com.spotify.Client
           - com.usebottles.bottles
+          - org.fedoraproject.MediaWriter
         remote: flathub
         state: present
 
@@ -34,6 +35,7 @@
           - com.discordapp.Discord
           - com.valvesoftware.Steam
           - com.obsproject.Studio
+          - net.davidotek.pupgui2 # install other Proton/Wine tools
         remote: flathub
         state: present
 
