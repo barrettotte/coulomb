@@ -65,8 +65,8 @@ For Bazzite, I need to use `bazzite-nvidia` instead of `bazzite-nvidia-open` so 
 
 ## References
 
-- https://docs.fedoraproject.org/en-US/fedora-kinoite/
 - https://github.com/nvim-lua/kickstart.nvim
 - https://www.nerdfonts.com
 - [How to Customize Tmux (20XX Edition) | Zero Plugins](https://www.youtube.com/watch?v=XivdyrFCV4M)
 - https://docs.bazzite.gg/
+- https://docs.fedoraproject.org/en-US/fedora-kinoite/

@@ -57,15 +57,6 @@ return {
       virtual_text = {
         source = 'if_many',
         spacing = 2,
-        format = function(diagnostic)
-          local diagnostic_message = {
-            [vim.diagnostic.severity.ERROR] = diagnostic.message,
-            [vim.diagnostic.severity.WARN] = diagnostic.message,
-            [vim.diagnostic.severity.INFO] = diagnostic.message,
-            [vim.diagnostic.severity.HINT] = diagnostic.message,
-          }
-          return diagnostic_message[diagnostic.severity]
-        end,
       },
     }
 
@@ -74,11 +65,27 @@ return {
     local servers = {
       lua_ls = {},
       pyright = {},
+      ts_ls = {},
+      gopls = {},
+      rust_analyzer = {},
+      clangd = {},
+      bashls = {},
+      html = {},
+      cssls = {},
+      jsonls = {},
+      yamlls = {},
+      svls = {},
+      ghdl_ls = {},
+      sqlls = {},
     }
 
     local ensure_installed = vim.tbl_keys(servers or {})
     vim.list_extend(ensure_installed, {
       'stylua',
+      'prettier',
+      'black',
+      'gofumpt',
+      'shfmt',
     })
     require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 

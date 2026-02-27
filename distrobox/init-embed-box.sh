@@ -7,23 +7,10 @@ set -ex
 source "$(dirname "$0")/common.sh"
 init_start "embed-box"
 
-# update and install packages
 echo "Installing packages..."
-sudo apt-get update
+install_apt_base
 
-# general
-sudo apt-get install -y \
-    build-essential \
-    cmake \
-    gdb \
-    git \
-    curl \
-    wget \
-    unzip \
-    python3 \
-    python3-pip \
-    python3-venv \
-    zsh
+sudo apt-get install -y gdb
 
 # ARM cross toolchain
 sudo apt-get install -y \

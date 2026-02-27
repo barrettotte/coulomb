@@ -7,23 +7,10 @@ set -ex
 source "$(dirname "$0")/common.sh"
 init_start "gamedev-box"
 
-# update and install packages
 echo "Installing packages..."
-sudo apt-get update
+install_apt_base
 
-# general
-sudo apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    curl \
-    wget \
-    unzip \
-    python3 \
-    python3-pip \
-    python3-venv \
-    pkg-config \
-    zsh
+sudo apt-get install -y pkg-config
 
 # graphics / Vulkan
 sudo apt-get install -y \

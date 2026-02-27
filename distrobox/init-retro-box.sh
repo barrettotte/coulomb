@@ -7,22 +7,8 @@ set -ex
 source "$(dirname "$0")/common.sh"
 init_start "retro-box"
 
-# update and install packages
 echo "Installing packages..."
-sudo apt-get update
-
-# general
-sudo apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    curl \
-    wget \
-    unzip \
-    python3 \
-    python3-pip \
-    python3-venv \
-    zsh
+install_apt_base
 
 # multi-system emulators
 sudo apt-get install -y \

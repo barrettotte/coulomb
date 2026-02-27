@@ -7,9 +7,8 @@ set -ex
 source "$(dirname "$0")/common.sh"
 init_start "ctf-box"
 
-# update and install packages
 echo "Installing packages..."
-sudo apt-get update
+install_apt_base
 
 # recon / scanning
 sudo apt-get install -y \
@@ -64,11 +63,8 @@ sudo apt-get install -y \
     pngcheck \
     pngtools
 
-# languages
+# languages (base packages cover python3/build-essential)
 sudo apt-get install -y \
-    python3-pip \
-    python3-venv \
-    build-essential \
     golang \
     php \
     nodejs \
@@ -87,16 +83,11 @@ sudo apt-get install -y \
     sigrok-cli \
     pulseview
 
-# general
+# ctf extras
 sudo apt-get install -y \
-    cmake \
     jq \
     sqlite3 \
-    tmux \
-    curl \
-    wget \
-    git \
-    zsh
+    tmux
 
 # rust
 echo "Installing Rust..."

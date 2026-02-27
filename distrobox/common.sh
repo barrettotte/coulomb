@@ -3,13 +3,15 @@
 # Common functions for distrobox init scripts
 # Usage: source "$(dirname "$0")/common.sh"
 
-export DEBIAN_FRONTEND=noninteractive
+# Debian/Ubuntu-specific setup (skipped on Arch, Kali inherits from Debian)
+if command -v apt-get &>/dev/null; then
+    export DEBIAN_FRONTEND=noninteractive
 
-# Ensure DEBIAN_FRONTEND is preserved through sudo and preconfigure keyboard
-if command -v debconf-set-selections &>/dev/null; then
-    echo 'Defaults env_keep += "DEBIAN_FRONTEND"' | sudo tee /etc/sudoers.d/keep-debian-frontend >/dev/null
-    echo "keyboard-configuration keyboard-configuration/layoutcode string us" | sudo debconf-set-selections
-    echo "keyboard-configuration keyboard-configuration/xkb-keymap select us" | sudo debconf-set-selections
+    if command -v debconf-set-selections &>/dev/null; then
+        echo 'Defaults env_keep += "DEBIAN_FRONTEND"' | sudo tee /etc/sudoers.d/keep-debian-frontend >/dev/null
+        echo "keyboard-configuration keyboard-configuration/layoutcode string us" | sudo debconf-set-selections
+        echo "keyboard-configuration keyboard-configuration/xkb-keymap select us" | sudo debconf-set-selections
+    fi
 fi
 
 HOST_HOME="/home/$USER"
@@ -29,6 +31,23 @@ init_start() {
     echo "Initializing $BOX_NAME..."
     echo "Host home: $HOST_HOME"
     echo "Dotfiles: $DOTFILES"
+}
+
+# Install base packages common to all Debian/Ubuntu-based boxes.
+# Keeps individual init scripts focused on domain-specific packages.
+install_apt_base() {
+    sudo apt-get update
+    sudo apt-get install -y \
+        build-essential \
+        cmake \
+        git \
+        curl \
+        wget \
+        unzip \
+        python3 \
+        python3-pip \
+        python3-venv \
+        zsh
 }
 
 # Install oh-my-zsh with plugins and set zsh as default shell

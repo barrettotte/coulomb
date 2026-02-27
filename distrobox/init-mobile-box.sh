@@ -7,18 +7,8 @@ set -ex
 source "$(dirname "$0")/common.sh"
 init_start "mobile-box"
 
-# update and install packages
 echo "Installing packages..."
-sudo apt-get update
-
-# general
-sudo apt-get install -y \
-    build-essential \
-    git \
-    curl \
-    wget \
-    unzip \
-    zsh
+install_apt_base
 
 # Java (Android requires JDK 17)
 sudo apt-get install -y \

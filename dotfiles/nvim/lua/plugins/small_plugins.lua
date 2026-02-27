@@ -15,6 +15,8 @@ return {
     spec = {
       { "<leader>s", group = "[S]earch" },
       { "<leader>t", group = "[T]oggle" },
+      { "<leader>h", group = "Git [H]unk" },
+      { "<leader>f", group = "[F]ormat" },
     },
   },
   {
@@ -54,8 +56,8 @@ return {
       -- Comment lines (gcc - toggle comment line)
       require("mini.comment").setup()
 
-      -- Highlights trailing whitespaces
-      require("mini.trailspace").setup()
+      -- Autopairs (auto-close brackets, quotes, etc.)
+      require("mini.pairs").setup()
     end,
   },
 }
