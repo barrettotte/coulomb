@@ -1,0 +1,239 @@
+---
+
+- name: Bazzite Host Setup
+  hosts: localhost
+  connection: local
+
+  vars:
+    coulomb_dir: "{{ ansible_facts['env']['HOME'] }}/storage/code/repos/coulomb"
+    dotfiles_dir: "{{ coulomb_dir }}/dotfiles"
+    brew_prefix: /home/linuxbrew/.linuxbrew
+
+  tasks:
+    # ====================================================
+    # Verify Mounts
+    # ====================================================
+
+    - name: Verify required mounts
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: mount_checks
+      loop:
+        - /var/mnt/code
+        - /var/mnt/mass
+        - /var/mnt/misc
+        - "{{ ansible_facts['env']['HOME'] }}/storage"
+
+    - name: Fail if mounts are missing
+      ansible.builtin.fail:
+        msg: >
+          Required mount {{ item.item }} is missing.
+          See bazzite.md for mount setup instructions.
+      when: not item.stat.exists
+      loop: "{{ mount_checks.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    # ====================================================
+    # Homebrew Packages
+    # ====================================================
+
+    - name: Install Homebrew packages
+      community.general.homebrew:
+        name:
+          - htop
+          - fastfetch
+          - zsh
+          - feh
+          - neovim
+          - git-lfs
+          - git-crypt
+          - claude-code
+        state: present
+
+    # ====================================================
+    # Oh My Zsh + Plugins
+    # ====================================================
+
+    - name: Check if Oh My Zsh is installed
+      ansible.builtin.stat:
+        path: "{{ ansible_facts['env']['HOME'] }}/.oh-my-zsh"
+      register: omz_dir
+
+    - name: Install Oh My Zsh
+      ansible.builtin.shell: >
+        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+      when: not omz_dir.stat.exists
+
+    - name: Install zsh-autosuggestions plugin
+      ansible.builtin.git:
+        repo: https://github.com/zsh-users/zsh-autosuggestions
+        dest: "{{ ansible_facts['env']['HOME'] }}/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+        depth: 1
+      when: omz_dir.stat.exists or not omz_dir.stat.exists
+
+    - name: Install zsh-syntax-highlighting plugin
+      ansible.builtin.git:
+        repo: https://github.com/zsh-users/zsh-syntax-highlighting
+        dest: "{{ ansible_facts['env']['HOME'] }}/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
+        depth: 1
+      when: omz_dir.stat.exists or not omz_dir.stat.exists
+
+    - name: Register brew zsh in /etc/shells
+      ansible.builtin.lineinfile:
+        path: /etc/shells
+        line: "{{ brew_prefix }}/bin/zsh"
+        state: present
+      become: true
+
+    - name: Set brew zsh as default shell
+      ansible.builtin.user:
+        name: "{{ ansible_facts['env']['USER'] }}"
+        shell: "{{ brew_prefix }}/bin/zsh"
+      become: true
+
+    # ====================================================
+    # Directories
+    # ====================================================
+
+    - name: Create required directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ ansible_facts['env']['HOME'] }}/storage/code/distrobox"
+        - "{{ ansible_facts['env']['HOME'] }}/storage/code/podman"
+        - "{{ ansible_facts['env']['HOME'] }}/.config/containers"
+        - "{{ ansible_facts['env']['HOME'] }}/.config/distrobox"
+        - "{{ ansible_facts['env']['HOME'] }}/.config/nvim"
+        - "{{ ansible_facts['env']['HOME'] }}/.var/app/com.visualstudio.code/config/Code/User"
+        - "{{ ansible_facts['env']['HOME'] }}/.local/bin"
+        - "{{ ansible_facts['env']['HOME'] }}/.local/share/fonts"
+
+    # ====================================================
+    # Symlink Dotfiles
+    # ====================================================
+
+    - name: Symlink dotfiles
+      ansible.builtin.file:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        state: link
+        force: true
+      loop:
+        - src: "{{ dotfiles_dir }}/.zshrc"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.zshrc"
+        - src: "{{ dotfiles_dir }}/.gitconfig"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.gitconfig"
+        - src: "{{ dotfiles_dir }}/.tmux.conf"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.tmux.conf"
+        - src: "{{ dotfiles_dir }}/podman/storage.conf"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/containers/storage.conf"
+        - src: "{{ dotfiles_dir }}/distrobox/distrobox.conf"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/distrobox/distrobox.conf"
+        - src: "{{ dotfiles_dir }}/nvim"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/nvim"
+        - src: "{{ dotfiles_dir }}/vscode/settings.json"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.var/app/com.visualstudio.code/config/Code/User/settings.json"
+
+    # ====================================================
+    # Flatpak Overrides
+    # ====================================================
+
+    - name: Symlink Flatpak overrides
+      ansible.builtin.file:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        state: link
+        force: true
+      become: true
+      loop:
+        - src: "{{ dotfiles_dir }}/flatpak/overrides/com.valvesoftware.Steam"
+          dest: /var/lib/flatpak/overrides/com.valvesoftware.Steam
+        - src: "{{ dotfiles_dir }}/flatpak/overrides/com.visualstudio.code"
+          dest: /var/lib/flatpak/overrides/com.visualstudio.code
+
+    # ====================================================
+    # VS Code Extensions
+    # ====================================================
+
+    - name: Check if VS Code Flatpak is installed
+      ansible.builtin.command: flatpak info com.visualstudio.code
+      register: vscode_check
+      changed_when: false
+      failed_when: false
+
+    - name: Install VS Code extensions
+      ansible.builtin.shell: |
+        cat "{{ dotfiles_dir }}/vscode/extensions.txt" | xargs -L 1 flatpak run com.visualstudio.code --install-extension
+      register: vscode_ext_result
+      when: vscode_check.rc == 0
+      changed_when: "'Successfully installed' in vscode_ext_result.stdout"
+
+    # ====================================================
+    # JetBrainsMono Nerd Font
+    # ====================================================
+
+    - name: Check if JetBrainsMono font is installed
+      ansible.builtin.stat:
+        path: "{{ ansible_facts['env']['HOME'] }}/.local/share/fonts/JetBrainsMono"
+      register: jbm_font
+
+    - name: Get latest JetBrainsMono Nerd Font release URL
+      ansible.builtin.uri:
+        url: https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest
+        return_content: true
+      register: nf_release
+      when: not jbm_font.stat.exists
+
+    - name: Download JetBrainsMono Nerd Font
+      ansible.builtin.get_url:
+        url: "{{ nf_release.json.assets | selectattr('name', 'equalto', 'JetBrainsMono.zip') | map(attribute='browser_download_url') | first }}"
+        dest: /tmp/JetBrainsMono.zip
+        mode: "0644"
+      when: not jbm_font.stat.exists
+
+    - name: Create JetBrainsMono font directory
+      ansible.builtin.file:
+        path: "{{ ansible_facts['env']['HOME'] }}/.local/share/fonts/JetBrainsMono"
+        state: directory
+        mode: "0755"
+      when: not jbm_font.stat.exists
+
+    - name: Extract JetBrainsMono Nerd Font
+      ansible.builtin.unarchive:
+        src: /tmp/JetBrainsMono.zip
+        dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/fonts/JetBrainsMono"
+        remote_src: true
+      when: not jbm_font.stat.exists
+
+    - name: Refresh font cache
+      ansible.builtin.command: fc-cache -fv
+      changed_when: true
+      when: not jbm_font.stat.exists
+
+    - name: Clean up font zip
+      ansible.builtin.file:
+        path: /tmp/JetBrainsMono.zip
+        state: absent
+      when: not jbm_font.stat.exists
+
+    # ====================================================
+    # Services and Groups
+    # ====================================================
+
+    - name: Enable and start libvirtd
+      ansible.builtin.systemd:
+        name: libvirtd
+        enabled: true
+        state: started
+      become: true
+
+
+    - name: Enable and start podman socket (user)
+      ansible.builtin.systemd:
+        name: podman.socket
+        enabled: true
+        state: started
+        scope: user

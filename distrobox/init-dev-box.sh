@@ -4,20 +4,8 @@
 
 set -ex
 
-BOX_NAME="dev-box"
-HOST_HOME="/home/$USER"
-DOTFILES="$HOST_HOME/repos/coulomb/dotfiles"
-MARKER_FILE="$HOME/.distrobox-initialized"
-
-# exit if already initialized
-if [ -f "$MARKER_FILE" ]; then
-    echo "$BOX_NAME already initialized. Skipping init script."
-    exit 0
-fi
-
-echo "Initializing $BOX_NAME..."
-echo "Host home: $HOST_HOME"
-echo "Dotfiles: $DOTFILES"
+source "$(dirname "$0")/common.sh"
+init_start "dev-box"
 
 # initialize keyring
 echo "Initializing Arch Keyring..."
@@ -25,103 +13,90 @@ sudo pacman-key --init
 sudo pacman-key --populate archlinux
 sudo pacman -Sy --noconfirm archlinux-keyring
 
-# update and install packages
 echo "Installing packages..."
+
+# shell / CLI tools
 sudo pacman -Syu --noconfirm --needed \
-    neovim \
-    vim \
     zsh \
+    ripgrep \
+    fd \
+    curl \
+    wget \
+    jq \
+    htop \
+    tree \
+    strace \
+    wl-clipboard
+
+# git
+sudo pacman -S --noconfirm --needed \
     git \
     git-lfs \
     git-crypt \
-    github-cli \
+    github-cli
+
+# media
+sudo pacman -S --noconfirm --needed \
     feh \
     ffmpeg \
-    ripgrep \
-    wl-clipboard \
-    imagemagick \
-    fd \
-    curl \
-    jq \
+    imagemagick
+
+# build
+sudo pacman -S --noconfirm --needed \
     base-devel \
-    cmake \
-    htop \
-    qt6-base \
-    tk \
-    npm \
+    cmake
+
+# languages / runtimes
+sudo pacman -S --noconfirm --needed \
     python \
     go \
-    hugo \
+    npm \
+    lua \
+    luajit \
+    ruby \
+    jdk-openjdk \
+    dotnet-sdk
+
+# GUI deps
+sudo pacman -S --noconfirm --needed \
+    qt6-base \
+    tk
+
+# databases
+sudo pacman -S --noconfirm --needed \
+    postgresql-libs \
+    sqlite
+
+# web dev
+sudo pacman -S --noconfirm --needed \
+    hugo
+
+# infra / cloud
+sudo pacman -S --noconfirm --needed \
     docker \
     docker-compose \
     ollama \
     terraform \
-    aws-cli-v2
+    aws-cli-v2 \
+    kubectl \
+    helm
 
 # CUDA - use injected driver, but install toolkit
 sudo pacman -Syu --noconfirm cuda --assume-installed opencl-nvidia
 
+# rust
+echo "Installing Rust..."
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
 # uv - python package manager
 curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
 
-# compile/install Microsoft proprietary VS Code (for marketplace/debuggers)
-if ! command -v code &> /dev/null; then
-    echo "Installing VS Code..."
-    rm -rf /tmp/vscode
-
-    git clone https://aur.archlinux.org/visual-studio-code-bin.git /tmp/vscode
-    pushd /tmp/vscode
-    makepkg -si --noconfirm
-    popd
-    rm -rf /tmp/vscode
-fi
-
-# add vscode extensions (generated via code --list-extensions > extensions.txt)
-if command -v code &> /dev/null; then
-    echo "Installing VS Code extensions..."
-    cat "$DOTFILES/vscode/extensions.txt" | xargs -L 1 code --install-extension || true
-fi
-
-# setup nerd font (for vscode, nvim will use host's nerd font)
-if [ ! -d "$HOME/.local/share/fonts/JetBrainsMono" ]; then
-    echo "Installing JetBrainsMono Nerd Font..."
-    rm -f /tmp/JetBrainsMono.zip
-
-    NERD_FONT_VERSION=$(curl -s https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest | jq -r '.tag_name')
-    curl -L "https://github.com/ryanoasis/nerd-fonts/releases/download/${NERD_FONT_VERSION}/JetBrainsMono.zip" -o /tmp/JetBrainsMono.zip
-    mkdir -p "$HOME/.local/share/fonts"
-    unzip /tmp/JetBrainsMono.zip -d "$HOME/.local/share/fonts/JetBrainsMono"
-
-    fc-cache -fv
-    rm -f "/tmp/JetBrainsMono.zip"
-fi
-
-# set default shell to zsh and setup plugins
-if [ "$SHELL" != "/usr/bin/zsh" ]; then
-    echo "Installing ohmyzsh plugins and changing default shell to Zsh..."
-    rm -rf "$HOME/.oh-my-zsh"
-    
-    RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-    git clone https://github.com/zsh-users/zsh-autosuggestions "$HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
-    git clone https://github.com/zsh-users/zsh-syntax-highlighting "$HOME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
-    sudo chsh -s /usr/bin/zsh $USER
-fi
+setup_zsh
 
 # setup Go env
 mkdir -p "$HOME/go/bin"
 mkdir -p "$HOME/go/pkg"
 mkdir -p "$HOME/go/src"
 
-# symlinks
-ln -snf "$HOST_HOME/storage/code/repos" "$HOME/repos"
-
-mkdir -p "$HOME/.config/Code/User"
-ln -snf "$DOTFILES/vscode/settings.json" "$HOME/.config/Code/User/settings.json"
-
-ln -snf "$DOTFILES/.gitconfig" "$HOME/.gitconfig"
-ln -snf "$DOTFILES/.zshrc" "$HOME/.zshrc"
-ln -snf "$DOTFILES/nvim" "$HOME/.config/nvim"
-
-touch "$MARKER_FILE"
-echo "$BOX_NAME initialization completed."
-echo "restart container or run 'zsh' to start."
+setup_symlinks
+init_end

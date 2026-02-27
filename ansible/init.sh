@@ -2,90 +2,76 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$HOME/.cache/ansible-bootstrap-venv"
 
-ANSIBLE_EXTRA_VARS="target_user=$USER ansible_python_interpreter=$(which python)"
-ANSIBLE_BASE_CMD=(ansible-playbook -i inventory.ini -vv --extra-vars "$ANSIBLE_EXTRA_VARS" --ask-become-pass)
+ANSIBLE_EXTRA_VARS="target_user=$USER ansible_python_interpreter=$(which python3)"
+ANSIBLE_BASE_CMD=(ansible-playbook -i "$SCRIPT_DIR/inventory.ini" -vv --extra-vars "$ANSIBLE_EXTRA_VARS" --ask-become-pass)
 
-echo "Starting Fedora Kinoite bootstrap..."
+echo "Starting Bazzite setup..."
 
-# make sure python is installed (normally included in Fedora Kinoite)
+# =============================================================================
+# Check Prerequisites
+# =============================================================================
+
 if ! command -v python3 &> /dev/null; then
-    echo "Python3 could not be found. Cannot continue setup."
+    echo "ERROR: python3 not found."
     exit 1
 fi
 
-# make sure secureboot is disabled (for NVIDIA drivers)
-if [ "$(mokutil --sb-state)" = "SecureBoot enabled" ]; then
-    echo "SecureBoot is enabled. This needs to be disabled in BIOS to continue."
-    exit 2
+if ! command -v brew &> /dev/null; then
+    echo "ERROR: Homebrew not found. Install it first - see bazzite.md"
+    exit 1
 fi
 
-# create and/or enter virtual env
+# =============================================================================
+# Python venv + Ansible
+# =============================================================================
+
 if [ ! -d "$VENV_DIR" ]; then
-    echo "Creating python virtual environment for Ansible..."
+    echo "Creating Python virtual environment for Ansible..."
     python3 -m venv "$VENV_DIR"
     source "$VENV_DIR/bin/activate"
     pip install --upgrade pip
-    echo "Installing Ansible core..."
     pip install ansible requests
 else
-    echo "Using existing python virtual environment."
+    echo "Using existing Python virtual environment."
     source "$VENV_DIR/bin/activate"
 fi
 
 echo "Installing Ansible collections..."
 ansible-galaxy collection install ansible.posix community.general
 
-# run base setup - os upgrade, drivers, kargs, etc
-echo "Running base setup..."
-"${ANSIBLE_BASE_CMD[@]}" playbooks/base.yml || true
+# =============================================================================
+# Run playbooks
+# =============================================================================
 
-# check if playbook succeeded
-if [ $? -ne 0 ]; then
-    echo "Base setup playbook failed."
-    exit 3
-fi
+echo ""
+echo "========================================"
+echo "Running host-setup playbook..."
+echo "========================================"
+"${ANSIBLE_BASE_CMD[@]}" "$SCRIPT_DIR/playbooks/host-setup.yml"
 
-BOOTED_DEPLOYMENT=$(rpm-ostree status --json | jq '.deployments[] | select(.booted == true) | .id')
-STAGED_DEPLOYMENT=$(rpm-ostree status --json | jq '.deployments[] | select(.staged == true) | .id')
+echo ""
+echo "========================================"
+echo "Running flatpaks playbook..."
+echo "========================================"
+"${ANSIBLE_BASE_CMD[@]}" "$SCRIPT_DIR/playbooks/flatpaks.yml"
 
-if [[ "$BOOTED_DEPLOYMENT" != "$STAGED_DEPLOYMENT" && -n "$STAGED_DEPLOYMENT" ]]; then
-    echo
-    echo "========================================================"
-    echo "A system update has been staged."
-    echo "Staged deployment: $STAGED_DEPLOYMENT"
-    echo "Booted deployment: $BOOTED_DEPLOYMENT"
-    echo "========================================================"
+echo ""
+echo "========================================"
+echo "Running distrobox playbook..."
+echo "========================================"
+"${ANSIBLE_BASE_CMD[@]}" "$SCRIPT_DIR/playbooks/distrobox.yml"
 
-    while true; do
-        read -p "Do you want to reboot now? [y/N]: " yn
-        case $yn in
-            [Yy]* )
-                echo "Rebooting system...Run this script again after reboot."
-                systemctl reboot
-                break;;
-            [Nn]* )
-                echo "Reboot skipped. Changes will not apply until reboot."
-                exit 0;;
-            * ) echo "Answer [Y]es or [N]o";;
-        esac
-    done
-else
-    echo "No pending reboots detected."
-    echo "Base system is up to date."
-    echo "Booted deployment: $BOOTED_DEPLOYMENT"
+# =============================================================================
+# Summary
+# =============================================================================
 
-    read -p "Proceed to user environment setup (main.yml)? [y/N]" main_yn
-    if [[ $main_yn =~ ^[Yy]$ ]]; then
-        echo "Setting up user environment..."
-        "${ANSIBLE_BASE_CMD[@]}" playbooks/user-env.yml
-
-        if [ $? -ne 0 ]; then
-            echo "User environment setup playbook failed."
-            exit 4
-        fi
-    else
-        echo "User environment setup skipped."
-    fi
-fi
+echo ""
+echo "========================================"
+echo "Setup complete!"
+echo "========================================"
+echo ""
+echo "You may need to log out and back in for group changes to take effect."
+echo "Run 'newgrp libvirt' to apply libvirt group in the current session."

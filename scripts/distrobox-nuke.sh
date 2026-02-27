@@ -25,7 +25,7 @@ distrobox ls | awk -F '|' 'NR>1 {print $2}' | xargs | while read -r box; do
 
         # podman container probably removed already, but just in case
         echo "Removing podman container $container..."
-        podman rm -f "$box" 2>/dev/null || echo "(Podman container already removed)"
+        podman rm -f "$container" 2>/dev/null || echo "(Podman container already removed)"
 
         TARGET_DIR="$DISTROBOX_CUSTOM_HOMES/$container"
         if [ -d "$TARGET_DIR" ]; then

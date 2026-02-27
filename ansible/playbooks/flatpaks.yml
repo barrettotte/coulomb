@@ -1,0 +1,119 @@
+---
+
+- name: Bazzite Flatpak Setup
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    # ====================================================
+    # Flathub Remote
+    # ====================================================
+
+    - name: Add Flathub remote
+      community.general.flatpak_remote:
+        name: flathub
+        flatpakrepo_url: https://dl.flathub.org/repo/flathub.flatpakrepo
+        state: present
+
+    # ====================================================
+    # General
+    # ====================================================
+
+    - name: Install general applications
+      community.general.flatpak:
+        name:
+          - com.brave.Browser
+          - com.github.tchx84.Flatseal
+          - md.obsidian.Obsidian
+          - org.kde.kamoso
+          - com.spotify.Client
+          - com.usebottles.bottles
+          - org.fedoraproject.MediaWriter
+          - org.mozilla.firefox
+        remote: flathub
+        state: present
+
+    # ====================================================
+    # Development
+    # ====================================================
+
+    - name: Install development applications
+      community.general.flatpak:
+        name:
+          - com.visualstudio.code
+        remote: flathub
+        state: present
+
+    # ====================================================
+    # Gaming
+    # ====================================================
+
+    - name: Install gaming applications
+      community.general.flatpak:
+        name:
+          - com.discordapp.Discord
+          - com.obsproject.Studio
+          - net.davidotek.pupgui2
+          - com.github.Matoking.protontricks
+          - com.heroicgameslauncher.hgl
+        remote: flathub
+        state: present
+
+    # ====================================================
+    # Media / 3D
+    # ====================================================
+
+    - name: Install media and 3D applications
+      community.general.flatpak:
+        name:
+          - org.gimp.GIMP
+          - org.kde.krita
+          - org.inkscape.Inkscape
+          - org.videolan.VLC
+          - org.audacityteam.Audacity
+          - org.kde.kdenlive
+          - org.blender.Blender
+        remote: flathub
+        state: present
+
+    # ====================================================
+    # CAD
+    # ====================================================
+
+    - name: Install CAD applications
+      community.general.flatpak:
+        name:
+          - org.kicad.KiCad
+          - org.freecad.FreeCAD
+          - com.prusa3d.PrusaSlicer
+          - org.openscad.OpenSCAD
+        remote: flathub
+        state: present
+
+    # ====================================================
+    # KDE Utilities
+    # ====================================================
+
+    - name: Install KDE utilities
+      community.general.flatpak:
+        name:
+          - org.kde.filelight
+          - org.kde.gwenview
+          - org.kde.haruna
+          - org.kde.kcalc
+          - org.kde.okular
+        remote: flathub
+        state: present
+
+    # ====================================================
+    # System
+    # ====================================================
+
+    - name: Install system utilities
+      community.general.flatpak:
+        name:
+          - com.ranfdev.DistroShelf
+          - io.github.flattool.Warehouse
+        remote: flathub
+        state: present

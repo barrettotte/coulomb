@@ -1,0 +1,47 @@
+---
+
+- name: Bazzite Distrobox Setup
+  hosts: localhost
+  connection: local
+
+  vars:
+    ini_file: "{{ ansible_facts['env']['HOME'] }}/storage/code/repos/coulomb/distrobox/distrobox.ini"
+
+  tasks:
+    - name: Get distrobox names from ini
+      ansible.builtin.shell: grep '^\[' "{{ ini_file }}" | tr -d '[]'
+      register: box_names
+      changed_when: false
+
+    - name: Create distrobox
+      ansible.builtin.shell: |
+        awk '/^\[{{ item }}\]/{found=1} found && /^\[/ && !/^\[{{ item }}\]/{exit} found' "{{ ini_file }}" > "/tmp/distrobox-{{ item }}.ini"
+        distrobox assemble create --file "/tmp/distrobox-{{ item }}.ini"
+        rm -f "/tmp/distrobox-{{ item }}.ini"
+      register: box_result
+      changed_when: "'already exists' not in box_result.stderr"
+      loop: "{{ box_names.stdout_lines }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Show distrobox create results
+      ansible.builtin.debug:
+        msg: "{{ item.stdout_lines + item.stderr_lines }}"
+      loop: "{{ box_result.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Initialize distrobox
+      ansible.builtin.shell: distrobox enter {{ item }} -- true
+      register: init_result
+      changed_when: "'already exists' not in init_result.stderr"
+      loop: "{{ box_names.stdout_lines }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Show distrobox init results
+      ansible.builtin.debug:
+        msg: "{{ item.stdout_lines + item.stderr_lines }}"
+      loop: "{{ init_result.results }}"
+      loop_control:
+        label: "{{ item.item }}"
