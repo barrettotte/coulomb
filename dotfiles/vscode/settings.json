@@ -20,5 +20,8 @@
     "editor.fontFamily": "'JetBrainsMono Nerd Font', 'Droid Sans Mono', 'monospace', monospace",
     "editor.fontLigatures": false,
     "vsicons.dontShowNewVersionMessage": true,
-    "extensions.ignoreRecommendations": true
+    "extensions.ignoreRecommendations": true,
+    "claudeCode.preferredLocation": "panel",
+    "svelte.enable-ts-plugin": true,
+    "diffEditor.ignoreTrimWhitespace": false
 }

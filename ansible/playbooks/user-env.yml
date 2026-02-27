@@ -36,6 +36,7 @@
           - com.valvesoftware.Steam
           - com.obsproject.Studio
           - net.davidotek.pupgui2 # install other Proton/Wine tools
+          - com.heroicgameslauncher.hgl # Epic games
         remote: flathub
         state: present
 

@@ -4,7 +4,7 @@
 # setup PAT
 #   - https://github.com/settings/personal-access-tokens/new
 #   - Repo access = All, add permissions 'Metadata' and 'Contents'
-# Usage: GH_TOKEN="ghp_YourTokenGoesHere" ./gh-pull-all.sh /path/to/backup-dir
+# Usage: GH_TOKEN="ghp_YourTokenGoesHere" ./gh-clone-all.sh /path/to/backup-dir
 
 if [[ -z "$GH_TOKEN" ]]; then
   echo "Error: GH_TOKEN environment variable is not set."

@@ -65,7 +65,8 @@ fc-cache -fv
 # =============================================================================
 
 # needed for podman CDI (Container Device Interface)
-sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+# taken care of by Bazzite now
+# sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
 
 mkdir -p "$HOME/storage/code/distrobox"
 mkdir -p "$HOME/storage/code/podman"
@@ -90,17 +91,6 @@ ln -snf "$DOTFILES/distrobox/distrobox.conf" "$HOME/.config/distrobox/distrobox.
 # setup git user
 ln -snf "$DOTFILES/.gitconfig" "$HOME/.gitconfig"
 
-# KDE Plasma config
-ln -snf "$DOTFILES/kde/kdeglobals" "$HOME/.config/kdeglobals"
-ln -snf "$DOTFILES/kde/kwinrc" "$HOME/.config/kwinrc"
-
-# Konsole
-ln -snf "$DOTFILES/konsole/default-zsh.profile" "$HOME/.local/share/konsole/default-zsh.profile"
-ln -snf "$DOTFILES/konsole/konsolerc" "$HOME/.config/konsolerc"
-
-# Power management
-ln -snf "$DOTFILES/powerdevilrc" "$HOME/.config/powerdevilrc"
-
 # tmux
 ln -snf "$DOTFILES/.tmux.conf" "$HOME/.tmux.conf"
 
@@ -108,8 +98,15 @@ ln -snf "$DOTFILES/.tmux.conf" "$HOME/.tmux.conf"
 ln -snf "$DOTFILES/flatpak/overrides/com.valvesoftware.Steam" "$HOME/.local/share/flatpak/overrides/com.valvesoftware.Steam"
 
 # =============================================================================
-# TODO: Virtualization
+# Misc
 # =============================================================================
+
+# virtualization setup
+sudo systemctl enable --now libvirtd
+sudo usermod -aG libvirt barrett
+
+# needed for docker in distroboxes
+systemctl --user enable --now podman.socket
 
 # =============================================================================
 # Final

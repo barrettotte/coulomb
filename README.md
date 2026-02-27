@@ -1,6 +1,6 @@
 # Coulomb
 
-My Fedora Kinoite config and dotfiles.
+My system config and dotfiles. Currently using Bazzite.
 
 This leverages distrobox heavily to keep the main system clean.
 
@@ -10,6 +10,7 @@ This leverages distrobox heavily to keep the main system clean.
 - [distrobox/](distrobox/) - distroboxes for various purposes
 - [docs/](docs/) - misc markdown notes
 - [dotfiles/](dotfiles/) - nvim config, `.zshrc`, etc.
+- [services/](services/) - custom services
 - [scripts/](scripts/) - misc scripts that may or may not be useful
 
 ## Setup
@@ -49,21 +50,7 @@ I hope to continually tweak to fix this or maybe even figure out a better workar
 Also, there's some kind of weird race condition where sometimes rebooting causes three dots to be displayed
 on a monitor connected to the 1030. The system kind of gets stuck, but hard powering off fixes this most times.
 
-## TODO:
-
-- add Konsole profiles and/or shortcuts for opening dev-box
-- mouse and keyboard LEDs don't turn off on shutdown
-- add [discord-rpc-bridge](https://github.com/barrettotte/discord-rpc-bridge) auto-install, save `config.json` in dotfiles
-- add wallpaper/lockscreen auto-config
-- ctf-box
-- embed-box
-- radio-box
-- neovim
-  - blocks of text move keybinds
-  - easy tab keybinds
-  - easy embedded terminal (like vscode)
-  - git management (diffs, staging, etc)
-  - probably more theming/styling (double check looks decent in tmux)
+For Bazzite, I need to use `bazzite-nvidia` instead of `bazzite-nvidia-open` so I can have support for the GTX 1030.
 
 ## References
 

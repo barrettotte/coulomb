@@ -32,17 +32,34 @@ sudo pacman -Syu --noconfirm --needed \
     vim \
     zsh \
     git \
+    git-lfs \
+    git-crypt \
+    github-cli \
     feh \
     ffmpeg \
     ripgrep \
     wl-clipboard \
+    imagemagick \
     fd \
     curl \
     jq \
     base-devel \
+    cmake \
+    htop \
+    qt6-base \
+    tk \
     npm \
     python \
-    go
+    go \
+    hugo \
+    docker \
+    docker-compose \
+    ollama \
+    terraform \
+    aws-cli-v2
+
+# CUDA - use injected driver, but install toolkit
+sudo pacman -Syu --noconfirm cuda --assume-installed opencl-nvidia
 
 # uv - python package manager
 curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
@@ -53,21 +70,25 @@ if ! command -v code &> /dev/null; then
     rm -rf /tmp/vscode
 
     git clone https://aur.archlinux.org/visual-studio-code-bin.git /tmp/vscode
-    pushd . && cd /tmp/vscode
+    pushd /tmp/vscode
     makepkg -si --noconfirm
-    popd && rm -rf /tmp/vscode
+    popd
+    rm -rf /tmp/vscode
 fi
 
 # add vscode extensions (generated via code --list-extensions > extensions.txt)
-echo "Installing VS Code extensions..."
-cat "$DOTFILES/vscode/extensions.txt" | xargs -L 1 code --install-extension || true
+if command -v code &> /dev/null; then
+    echo "Installing VS Code extensions..."
+    cat "$DOTFILES/vscode/extensions.txt" | xargs -L 1 code --install-extension || true
+fi
 
 # setup nerd font (for vscode, nvim will use host's nerd font)
 if [ ! -d "$HOME/.local/share/fonts/JetBrainsMono" ]; then
     echo "Installing JetBrainsMono Nerd Font..."
     rm -f /tmp/JetBrainsMono.zip
 
-    curl -L https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/JetBrainsMono.zip -o /tmp/JetBrainsMono.zip
+    NERD_FONT_VERSION=$(curl -s https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest | jq -r '.tag_name')
+    curl -L "https://github.com/ryanoasis/nerd-fonts/releases/download/${NERD_FONT_VERSION}/JetBrainsMono.zip" -o /tmp/JetBrainsMono.zip
     mkdir -p "$HOME/.local/share/fonts"
     unzip /tmp/JetBrainsMono.zip -d "$HOME/.local/share/fonts/JetBrainsMono"
 
@@ -80,7 +101,7 @@ if [ "$SHELL" != "/usr/bin/zsh" ]; then
     echo "Installing ohmyzsh plugins and changing default shell to Zsh..."
     rm -rf "$HOME/.oh-my-zsh"
     
-    sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+    RUNZSH=no sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
     git clone https://github.com/zsh-users/zsh-autosuggestions "$HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
     git clone https://github.com/zsh-users/zsh-syntax-highlighting "$HOME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
     sudo chsh -s /usr/bin/zsh $USER
