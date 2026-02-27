@@ -1,6 +1,6 @@
 # Coulomb
 
-My system config and dotfiles. Currently using Bazzite DX.
+My system config and dotfiles. Currently using Bazzite.
 
 This leverages distrobox heavily to keep the main system clean.
 
