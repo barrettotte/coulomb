@@ -24,6 +24,7 @@
     "claudeCode.preferredLocation": "panel",
     "svelte.enable-ts-plugin": true,
     "diffEditor.ignoreTrimWhitespace": false,
+    "terminal.integrated.fontFamily": "'JetBrainsMono Nerd Font'",
     "terminal.integrated.defaultProfile.linux": "zsh (host)",
     "terminal.integrated.profiles.linux": {
         "zsh (host)": {
