@@ -91,6 +91,9 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 # uv - python package manager
 curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
 
+# Claude Code
+curl -fsSL https://claude.ai/install.sh | bash
+
 setup_zsh
 
 # setup Go env

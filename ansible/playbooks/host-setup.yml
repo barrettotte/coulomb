@@ -115,6 +115,7 @@
         - "{{ ansible_facts['env']['HOME'] }}/.config/autostart"
         - "{{ ansible_facts['env']['HOME'] }}/.config/plasma-workspace/shutdown"
         - "{{ ansible_facts['env']['HOME'] }}/.config/scopebuddy"
+        - "{{ ansible_facts['env']['HOME'] }}/.config/discord-rpc-bridge"
 
     # ====================================================
     # Symlink Dotfiles
@@ -149,6 +150,8 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/kwinrulesrc"
         - src: "{{ dotfiles_dir }}/scopebuddy/scb.conf"
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/scopebuddy/scb.conf"
+        - src: "{{ dotfiles_dir }}/discord-rpc-bridge/config.json"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/discord-rpc-bridge/config.json"
 
     # ====================================================
     # Flatpak Overrides
@@ -248,3 +251,28 @@
         enabled: true
         state: started
         scope: user
+
+    - name: Install discord-rpc-bridge
+      ansible.builtin.shell: |
+        curl -fsSL https://raw.githubusercontent.com/barrettotte/discord-rpc-bridge/master/scripts/download.sh | bash
+      args:
+        creates: "{{ ansible_facts['env']['HOME'] }}/.local/bin/discord-rpc-bridge"
+
+    - name: Check if Daedalus flatpak is installed
+      ansible.builtin.stat:
+        path: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/app/com.github.barrettotte.daedalus"
+      register: daedalus_installed
+
+    - name: Get latest Daedalus release URL
+      ansible.builtin.uri:
+        url: https://api.github.com/repos/barrettotte/daedalus/releases/latest
+        return_content: true
+      register: daedalus_release
+      when: not daedalus_installed.stat.exists
+
+    - name: Install Daedalus flatpak
+      ansible.builtin.shell: |
+        curl -fsSL -o /tmp/daedalus.flatpak '{{ daedalus_release.json.assets | selectattr("name", "equalto", "daedalus-linux-amd64.flatpak") | map(attribute="browser_download_url") | first }}'
+        flatpak install --user --noninteractive /tmp/daedalus.flatpak
+        rm -f /tmp/daedalus.flatpak
+      when: not daedalus_installed.stat.exists

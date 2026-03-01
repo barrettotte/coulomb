@@ -60,11 +60,6 @@ The race condition behavior might have been an issue only on Fedora Kinoite 43 <
 For Bazzite, I need to use `bazzite-nvidia` instead of `bazzite-nvidia-open` so I can have Pascal architecture support for the GTX 1030.
 Also have to add this command to each game's launch options to use the correct GPU.
 
-## TO DO
-
-- `discord-rpc-bridge` systemd install
-- `daedalus` flatpak install
-
 ## References
 
 - https://github.com/nvim-lua/kickstart.nvim

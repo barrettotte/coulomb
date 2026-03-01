@@ -15,7 +15,7 @@ if [ -d "/home/linuxbrew/.linuxbrew" ]; then
 fi
 
 # Source system profile scripts (sets up flatpak, etc.)
-emulate sh -c 'source /etc/profile'
+emulate sh -c 'source /etc/profile' 2>/dev/null
 
 # Go config
 export GOPATH="$HOME/go"
@@ -41,6 +41,7 @@ fi
 
 # aliases
 alias clanker="claude"
+alias code="flatpak run com.visualstudio.code"
 
 # add distrobox exported bins
 export PATH="$HOME/.local/bin:$PATH"

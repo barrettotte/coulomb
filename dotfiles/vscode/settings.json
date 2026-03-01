@@ -23,5 +23,16 @@
     "extensions.ignoreRecommendations": true,
     "claudeCode.preferredLocation": "panel",
     "svelte.enable-ts-plugin": true,
-    "diffEditor.ignoreTrimWhitespace": false
+    "diffEditor.ignoreTrimWhitespace": false,
+    "terminal.integrated.defaultProfile.linux": "zsh (host)",
+    "terminal.integrated.profiles.linux": {
+        "zsh (host)": {
+            "path": "/usr/bin/flatpak-spawn",
+            "args": [
+                "--host",
+                "/home/linuxbrew/.linuxbrew/bin/zsh"
+            ],
+            "overrideName": "zsh"
+        }
+    }
 }
