@@ -31,6 +31,7 @@ fi
 if [[ "$CONTAINER_ID" == "dev-box" ]]; then
     export PATH=$PATH:/opt/cuda/bin
     export DOCKER_HOST=unix:///run/host/run/user/$(id -u)/podman/podman.sock
+    export SSH_AUTH_SOCK=/run/host/run/user/$(id -u)/ssh-agent.socket
 
     # Suppress distrobox's prompt injection
     export PROMPT_COMMAND=""

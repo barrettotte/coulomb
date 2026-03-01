@@ -73,6 +73,7 @@ setup_symlinks() {
     ln -snf "$HOST_HOME/storage/code/repos" "$HOME/repos"
     ln -snf "$DOTFILES/.gitconfig" "$HOME/.gitconfig"
     ln -snf "$DOTFILES/.zshrc" "$HOME/.zshrc"
+    ln -snf "$HOST_HOME/.ssh" "$HOME/.ssh"
 }
 
 # Write marker file with container ID and print completion message
