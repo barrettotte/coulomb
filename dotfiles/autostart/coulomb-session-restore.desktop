@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Coulomb Session Restore
+Comment=Restore window positions from saved session
+Exec=/var/home/barrett/storage/code/repos/coulomb/scripts/session/session-restore.sh
+X-KDE-autostart-phase=2
+X-KDE-autostart-after=panel
+Hidden=false
+NoDisplay=true

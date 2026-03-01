@@ -10,8 +10,7 @@ This leverages distrobox heavily to keep the main system clean.
 - [distrobox/](distrobox/) - distroboxes for various purposes
 - [docs/](docs/) - misc markdown notes
 - [dotfiles/](dotfiles/) - nvim config, `.zshrc`, etc.
-- [services/](services/) - custom services
-- [scripts/](scripts/) - misc scripts that may or may not be useful
+- [scripts/](scripts/) - session save/restore and misc scripts
 - [vms/](vms/) - VM provisioning
 
 ## Setup
@@ -56,7 +55,10 @@ Also, there's some kind of weird race condition where sometimes rebooting causes
 on a monitor connected to the 1030. The system kind of gets stuck, but hard powering off fixes this most times.
 The race condition behavior might have been an issue only on Fedora Kinoite 43 <2026, hasn't happened on Bazzite so far.
 
+#### Bazzite Specific
+
 For Bazzite, I need to use `bazzite-nvidia` instead of `bazzite-nvidia-open` so I can have Pascal architecture support for the GTX 1030.
+Also have to add this command to each game's launch options to use the correct GPU.
 
 ## TO DO
 

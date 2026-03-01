@@ -39,5 +39,8 @@ if [[ "$CONTAINER_ID" == "dev-box" ]]; then
     PROMPT='📦%{$fg_bold[cyan]%}dev-box%{$reset_color%} %~ > '
 fi
 
+# aliases
+alias clanker="claude"
+
 # add distrobox exported bins
 export PATH="$HOME/.local/bin:$PATH"

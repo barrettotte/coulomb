@@ -48,6 +48,7 @@
           - neovim
           - git-lfs
           - git-crypt
+          - jq
           - claude-code
         state: present
 
@@ -110,6 +111,10 @@
         - "{{ ansible_facts['env']['HOME'] }}/.var/app/com.visualstudio.code/config/Code/User"
         - "{{ ansible_facts['env']['HOME'] }}/.local/bin"
         - "{{ ansible_facts['env']['HOME'] }}/.local/share/fonts"
+        - "{{ ansible_facts['env']['HOME'] }}/.config/coulomb"
+        - "{{ ansible_facts['env']['HOME'] }}/.config/autostart"
+        - "{{ ansible_facts['env']['HOME'] }}/.config/plasma-workspace/shutdown"
+        - "{{ ansible_facts['env']['HOME'] }}/.config/scopebuddy"
 
     # ====================================================
     # Symlink Dotfiles
@@ -136,6 +141,14 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/nvim"
         - src: "{{ dotfiles_dir }}/vscode/settings.json"
           dest: "{{ ansible_facts['env']['HOME'] }}/.var/app/com.visualstudio.code/config/Code/User/settings.json"
+        - src: "{{ dotfiles_dir }}/autostart/coulomb-session-restore.desktop"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/autostart/coulomb-session-restore.desktop"
+        - src: "{{ dotfiles_dir }}/plasma-shutdown/coulomb-session-save.sh"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/plasma-workspace/shutdown/coulomb-session-save.sh"
+        - src: "{{ dotfiles_dir }}/kwinrulesrc"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/kwinrulesrc"
+        - src: "{{ dotfiles_dir }}/scopebuddy/scb.conf"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/scopebuddy/scb.conf"
 
     # ====================================================
     # Flatpak Overrides
@@ -149,8 +162,6 @@
         force: true
       become: true
       loop:
-        - src: "{{ dotfiles_dir }}/flatpak/overrides/com.valvesoftware.Steam"
-          dest: /var/lib/flatpak/overrides/com.valvesoftware.Steam
         - src: "{{ dotfiles_dir }}/flatpak/overrides/com.visualstudio.code"
           dest: /var/lib/flatpak/overrides/com.visualstudio.code
 

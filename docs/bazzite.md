@@ -1,6 +1,6 @@
 # Bazzite
 
-Prerequisites to complete before running `bash ansible/init.sh`.
+Prerequisites to complete before running `bash init.sh`.
 
 Using image `bazzite-nvidia:stable`
 
@@ -46,5 +46,5 @@ ssh-add ~/.ssh/id_ed25519
 
 ```sh
 git clone https://github.com/barrettotte/coulomb.git && cd coulomb
-bash ansible/init.sh
+bash init.sh
 ```
