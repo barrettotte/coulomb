@@ -35,17 +35,6 @@
         state: present
 
     # ====================================================
-    # Development
-    # ====================================================
-
-    - name: Install development applications
-      community.general.flatpak:
-        name:
-          - com.visualstudio.code
-        remote: flathub
-        state: present
-
-    # ====================================================
     # Gaming
     # ====================================================
 

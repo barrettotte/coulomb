@@ -94,6 +94,22 @@ curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
 # Claude Code
 curl -fsSL https://claude.ai/install.sh | bash
 
+# VS Code (AUR)
+if ! pacman -Qi visual-studio-code-bin &>/dev/null; then
+    echo "Installing VS Code from AUR..."
+    git clone https://aur.archlinux.org/visual-studio-code-bin.git /tmp/vscode-aur
+    (cd /tmp/vscode-aur && makepkg -si --noconfirm)
+    rm -rf /tmp/vscode-aur
+fi
+
+# VS Code settings symlink
+mkdir -p "$HOME/.config/Code/User"
+ln -snf "$DOTFILES/vscode/settings.json" "$HOME/.config/Code/User/settings.json"
+
+# VS Code extensions
+echo "Installing VS Code extensions..."
+xargs -L 1 /usr/bin/code --install-extension < "$DOTFILES/vscode/extensions.txt"
+
 setup_zsh
 
 # setup Go env

@@ -41,7 +41,6 @@ fi
 
 # aliases
 alias clanker="claude"
-alias code="flatpak run com.visualstudio.code"
 
 # add distrobox exported bins
 export PATH="$HOME/.local/bin:$PATH"
