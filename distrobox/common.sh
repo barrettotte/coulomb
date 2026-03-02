@@ -19,8 +19,7 @@ DOTFILES="$HOST_HOME/repos/coulomb/dotfiles"
 MARKER_FILE="$HOME/.distrobox-initialized"
 
 # Initialize box - set variables, check marker, print header.
-# The marker stores the container ID so a recreated container re-runs init
-# even if the home directory persists.
+# The marker stores the container ID so a recreated container re-runs init even if the home directory persists.
 # Usage: init_start "box-name"
 init_start() {
     BOX_NAME="$1"
@@ -33,13 +32,25 @@ init_start() {
         exit 0
     fi
 
+    # fix ownership of dirs distrobox setup created as root
+    sudo chown -R "$(id -u):$(id -g)" "$HOME"
+
+    # ensure XDG vars point to host home (distrobox-export uses them to place desktop files)
+    # tell distrobox-export where the real host home is
+    export DISTROBOX_HOST_HOME="$HOST_HOME"
+
+    # ensure XDG vars are set (distrobox-export requires them)
+    export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+    export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOST_HOME/.local/share}"
+    export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOST_HOME/.config}"
+    export XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS:-/etc/xdg}"
+
     echo "Initializing $BOX_NAME..."
     echo "Host home: $HOST_HOME"
     echo "Dotfiles: $DOTFILES"
 }
 
 # Install base packages common to all Debian/Ubuntu-based boxes.
-# Keeps individual init scripts focused on domain-specific packages.
 install_apt_base() {
     sudo apt-get update
     sudo apt-get install -y \

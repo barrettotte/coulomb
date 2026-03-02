@@ -9,8 +9,8 @@ plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
 export ZSH_COMPDUMP=$ZSH/cache/.zcompdump-$HOST
 source $ZSH/oh-my-zsh.sh
 
-# Find brew-installed tools first
-if [ -d "/home/linuxbrew/.linuxbrew" ]; then
+# Find brew-installed tools first (host only)
+if [ -z "$CONTAINER_ID" ] && [ -d "/home/linuxbrew/.linuxbrew" ]; then
     eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi
 
@@ -23,13 +23,7 @@ if [ -d "$HOME/go/bin" ]; then
     export PATH="$PATH:$HOME/go/bin"
 fi
 
-# host-only config
-if [ -z "$CONTAINER_ID" ]; then
-    # nop
-fi
-
-if [[ "$CONTAINER_ID" == "dev-box" ]]; then
-    export PATH=$PATH:/opt/cuda/bin
+if [ -n "$CONTAINER_ID" ]; then
     export DOCKER_HOST=unix:///run/host/run/user/$(id -u)/podman/podman.sock
     export SSH_AUTH_SOCK=/run/host/run/user/$(id -u)/ssh-agent.socket
 
@@ -37,7 +31,15 @@ if [[ "$CONTAINER_ID" == "dev-box" ]]; then
     export PROMPT_COMMAND=""
     export DISTROBOX_ENTER_PROMPT_FIX=0
 
-    PROMPT='📦%{$fg_bold[cyan]%}dev-box%{$reset_color%} %~ > '
+    PROMPT='📦%{$fg_bold[cyan]%}'"$CONTAINER_ID"'%{$reset_color%} %~ > '
+fi
+
+if [[ "$CONTAINER_ID" == "ctf-box" ]]; then
+    export PATH="$PATH:$HOME/.local/share/gem/ruby/3.3.0/bin"
+fi
+
+if [[ "$CONTAINER_ID" == "dev-box" ]]; then
+    export PATH=$PATH:/opt/cuda/bin
 fi
 
 # aliases

@@ -217,6 +217,37 @@
         state: started
         scope: user
 
+    # ====================================================
+    # RTL-SDR
+    # ====================================================
+
+    - name: Blacklist DVB kernel module for RTL-SDR
+      ansible.builtin.copy:
+        dest: /etc/modprobe.d/blacklist-rtlsdr.conf
+        content: |
+          # Prevent kernel TV tuner driver from claiming RTL-SDR devices
+          blacklist dvb_usb_rtl28xxu
+          blacklist rtl2832
+          blacklist rtl2830
+        mode: "0644"
+      become: true
+
+    - name: Install RTL-SDR udev rules
+      ansible.builtin.copy:
+        dest: /etc/udev/rules.d/20-rtlsdr.rules
+        content: |
+          # RTL-SDR - allow non-root access
+          SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2838", MODE="0666"
+          SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2832", MODE="0666"
+        mode: "0644"
+      become: true
+      register: rtlsdr_udev
+
+    - name: Reload udev rules
+      ansible.builtin.command: udevadm control --reload-rules
+      become: true
+      when: rtlsdr_udev.changed
+
     - name: Install discord-rpc-bridge
       ansible.builtin.shell: |
         curl -fsSL https://raw.githubusercontent.com/barrettotte/discord-rpc-bridge/master/scripts/download.sh | bash

@@ -102,6 +102,10 @@ if ! pacman -Qi visual-studio-code-bin &>/dev/null; then
     rm -rf /tmp/vscode-aur
 fi
 
+# export VS Code to host
+distrobox-export --app code
+distrobox-export --bin /usr/bin/code --export-path "$HOST_HOME/.local/bin"
+
 # VS Code settings symlink
 mkdir -p "$HOME/.config/Code/User"
 ln -snf "$DOTFILES/vscode/settings.json" "$HOME/.config/Code/User/settings.json"

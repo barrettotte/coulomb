@@ -93,6 +93,13 @@ sudo apt-get install -y \
 echo "Installing Rust..."
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
+# uv - python package manager
+curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
+export PATH="$HOME/.local/bin:$PATH"
+
+# Claude Code
+curl -fsSL https://claude.ai/install.sh | bash
+
 # miniconda
 echo "Installing Miniconda..."
 mkdir -p "$HOME/.miniconda3"
