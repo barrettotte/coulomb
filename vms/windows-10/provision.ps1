@@ -27,6 +27,9 @@ $packages = @(
     "Microsoft.PowerShell"
     "Microsoft.WindowsTerminal"
 
+    # assembly - MASM via VS Build Tools (includes ml.exe / ml64.exe)
+    "Microsoft.VisualStudio.2022.BuildTools"
+
     # CAD
     "Autodesk.Fusion360"
 
@@ -46,6 +49,21 @@ $packages = @(
 foreach ($pkg in $packages) {
     Write-Host "Installing $pkg..." -ForegroundColor Yellow
     winget install --id $pkg --accept-source-agreements --accept-package-agreements --silent
+}
+
+# ============================================
+# VS Build Tools - MASM workload
+# ============================================
+
+Write-Host "`n=== Installing MASM via VS Build Tools ===" -ForegroundColor Cyan
+
+$vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+if (Test-Path $vsWhere) {
+    $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+    & $vsInstaller modify --installPath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools" `
+        --add Microsoft.VisualStudio.Workload.VCTools `
+        --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        --includeRecommended --passive --norestart
 }
 
 # ============================================

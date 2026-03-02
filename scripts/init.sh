@@ -13,7 +13,8 @@ usage() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANSIBLE_DIR="$SCRIPT_DIR/ansible"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ANSIBLE_DIR="$REPO_DIR/ansible"
 VENV_DIR="$HOME/.cache/ansible-bootstrap-venv"
 
 FRESH=false
@@ -81,7 +82,7 @@ echo "========================================"
 # Distrobox setup
 # =============================================================================
 
-DISTROBOX_INI="$SCRIPT_DIR/distrobox/distrobox.ini"
+DISTROBOX_INI="$REPO_DIR/distrobox/distrobox.ini"
 BOX_NAMES=$(grep '^\[' "$DISTROBOX_INI" | tr -d '[]')
 
 if [ "$FRESH" = true ]; then
@@ -89,7 +90,7 @@ if [ "$FRESH" = true ]; then
     echo "========================================"
     echo "Wiping out existing distroboxes..."
     echo "========================================"
-    bash "$SCRIPT_DIR/scripts/distrobox-nuke.sh"
+    bash "$SCRIPT_DIR/distrobox-nuke.sh"
 fi
 
 echo ""

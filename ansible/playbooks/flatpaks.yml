@@ -26,11 +26,23 @@
           - com.brave.Browser
           - com.github.tchx84.Flatseal
           - md.obsidian.Obsidian
-          - org.kde.kamoso
+          - org.kde.kamoso # camera
           - com.spotify.Client
           - com.usebottles.bottles
           - org.fedoraproject.MediaWriter
           - org.mozilla.firefox
+        remote: flathub
+        state: present
+
+    # ====================================================
+    # Development
+    # ====================================================
+
+    - name: Install development applications
+      community.general.flatpak:
+        name:
+          - com.google.AndroidStudio
+          - com.jetbrains.IntelliJ-IDEA-Community
         remote: flathub
         state: present
 
@@ -45,7 +57,18 @@
           - com.obsproject.Studio
           - net.davidotek.pupgui2
           - com.github.Matoking.protontricks
-          - com.heroicgameslauncher.hgl
+          - com.heroicgameslauncher.hgl # Epic Games
+        remote: flathub
+        state: present
+
+    # ====================================================
+    # Emulators
+    # ====================================================
+
+    - name: Install emulator applications
+      community.general.flatpak:
+        name:
+          - io.github.dosbox-staging
         remote: flathub
         state: present
 
@@ -77,6 +100,7 @@
           - org.freecad.FreeCAD
           - com.prusa3d.PrusaSlicer
           - org.openscad.OpenSCAD
+          - com.github.reds.LogisimEvolution
         remote: flathub
         state: present
 
@@ -92,6 +116,7 @@
           - org.kde.haruna
           - org.kde.kcalc
           - org.kde.okular
+          - org.kde.isoimagewriter
         remote: flathub
         state: present
 
@@ -102,7 +127,10 @@
     - name: Install system utilities
       community.general.flatpak:
         name:
-          - com.ranfdev.DistroShelf
-          - io.github.flattool.Warehouse
+          - com.ranfdev.DistroShelf # GUI for containers
+          - io.github.flattool.Warehouse # Manage flatpaks
+          - com.feaneron.Boatswain # Elgato Stream Deck
+          - io.github.nokse22.Exhibit # 3D model viewer
+          - org.openrgb.OpenRGB
         remote: flathub
         state: present

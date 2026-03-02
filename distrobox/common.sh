@@ -18,32 +18,22 @@ HOST_HOME="/home/$USER"
 DOTFILES="$HOST_HOME/repos/coulomb/dotfiles"
 MARKER_FILE="$HOME/.distrobox-initialized"
 
-# Initialize box - set variables, check marker, print header.
-# The marker stores the container ID so a recreated container re-runs init even if the home directory persists.
+# Initialize box - check marker, fix permissions, print header.
 # Usage: init_start "box-name"
 init_start() {
     BOX_NAME="$1"
 
-    # detect current container ID (works in podman and docker distroboxes)
-    CONTAINER_ID=$(cat /run/.containerenv 2>/dev/null | grep "^id=" | cut -d'"' -f2 || hostname)
-
-    if [ -f "$MARKER_FILE" ] && [ "$(cat "$MARKER_FILE")" = "$CONTAINER_ID" ]; then
+    if [ -f "$MARKER_FILE" ]; then
         echo "$BOX_NAME already initialized. Skipping init script."
+        echo "To re-run init, delete $MARKER_FILE and recreate the container."
         exit 0
     fi
 
     # fix ownership of dirs distrobox setup created as root
     sudo chown -R "$(id -u):$(id -g)" "$HOME"
 
-    # ensure XDG vars point to host home (distrobox-export uses them to place desktop files)
-    # tell distrobox-export where the real host home is
-    export DISTROBOX_HOST_HOME="$HOST_HOME"
-
-    # ensure XDG vars are set (distrobox-export requires them)
-    export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-    export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOST_HOME/.local/share}"
-    export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOST_HOME/.config}"
-    export XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS:-/etc/xdg}"
+    # suppress distro login messages
+    touch "$HOME/.hushlogin"
 
     echo "Initializing $BOX_NAME..."
     echo "Host home: $HOST_HOME"
@@ -87,9 +77,9 @@ setup_symlinks() {
     ln -snf "$HOST_HOME/.ssh" "$HOME/.ssh"
 }
 
-# Write marker file with container ID and print completion message
+# Write marker file and print completion message
 init_end() {
-    echo "$CONTAINER_ID" > "$MARKER_FILE"
+    touch "$MARKER_FILE"
     echo "$BOX_NAME initialization completed."
     echo "restart container or run 'zsh' to start."
 }

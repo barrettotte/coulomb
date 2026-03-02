@@ -10,6 +10,9 @@ init_start "ctf-box"
 echo "Installing packages..."
 install_apt_base
 
+# kali menu desktop files (needed for distrobox-export --app)
+sudo apt-get install -y kali-menu
+
 # recon / scanning
 sudo apt-get install -y \
     nmap \
@@ -132,6 +135,15 @@ git clone https://github.com/pwndbg/pwndbg.git "$HOME/.pwndbg"
 pushd "$HOME/.pwndbg"
 ./setup.sh
 popd
+
+# fix Ghidra blank UI on Wayland (force X11 backend)
+sudo sed -i 's|^Exec=ghidra|Exec=env GDK_BACKEND=x11 _JAVA_AWT_WM_NONREPARENTING=1 ghidra|' /usr/share/applications/kali-ghidra.desktop
+
+# fix desktop file categories (Kali-specific categories go to lost+found in KDE)
+sudo sed -i 's/^Categories=.*/Categories=Development;Debugger;/' /usr/share/applications/kali-ghidra.desktop
+sudo sed -i 's/^Categories=.*/Categories=Development;Network;Security;/' /usr/share/applications/kali-burpsuite.desktop
+sudo sed -i 's/^Categories=.*/Categories=Network;Monitor;/' /usr/share/applications/org.wireshark.Wireshark.desktop
+sudo sed -i 's|^Exec=.*|Exec=wireshark %f|' /usr/share/applications/org.wireshark.Wireshark.desktop
 
 setup_zsh
 setup_symlinks

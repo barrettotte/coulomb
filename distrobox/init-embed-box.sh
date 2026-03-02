@@ -79,14 +79,9 @@ sudo apt-get install -y \
     default-jre \
     libglib2.0-0
 
-# logisim-evolution
-echo "Installing Logisim Evolution..."
-mkdir -p "$HOME/.local/bin"
-LOGISIM_VERSION=$(curl -s https://api.github.com/repos/logisim-evolution/logisim-evolution/releases/latest | grep -oP '"tag_name":\s*"v?\K[^"]+')
-curl -L "https://github.com/logisim-evolution/logisim-evolution/releases/download/v${LOGISIM_VERSION}/logisim-evolution-${LOGISIM_VERSION}-all.jar" -o "$HOME/.local/bin/logisim-evolution.jar"
-
 # arduino-cli
 echo "Installing arduino-cli..."
+mkdir -p "$HOME/.local/bin"
 curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | BINDIR="$HOME/.local/bin" sh
 
 # pip installs

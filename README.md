@@ -20,13 +20,21 @@ Setup prerequisites (see [docs/bazzite.md](docs/bazzite.md)):
 ```sh
 # last step of prerequisites
 git clone https://github.com/barrettotte/coulomb.git && cd coulomb
-bash init.sh
+bash scripts/init.sh
 ```
 
 This runs two playbooks then creates/initializes distroboxes:
 1. `host-setup.yml` - brew packages, zsh, dotfiles, fonts, services
 2. `flatpaks.yml` - all Flatpak applications
 3. Distrobox create + init from `distrobox/distrobox.ini` (could be a playbook, but more chatty ran standalone)
+
+## Updating
+
+Update host packages (brew, flatpaks) and all distroboxes:
+
+```sh
+bash scripts/update.sh
+```
 
 ## Distroboxes
 
@@ -36,11 +44,11 @@ This runs two playbooks then creates/initializes distroboxes:
 | `dev-box`     | `archlinux/archlinux:latest` | General development                 |
 | `embed-box`   | `ubuntu:22.04`               | FPGA and embedded development       |
 | `gamedev-box` | `ubuntu:22.04`               | Game development (Godot, Unreal)    |
-| `mobile-box`  | `ubuntu:22.04`               | Android and mobile development      |
 | `radio-box`   | `ubuntu:22.04`               | SDR and GNU Radio                   |
-| `retro-box`   | `ubuntu:22.04`               | Vintage computing and retro dev     |
 
-All distroboxes are defined in `distrobox/distrobox.ini`
+All distroboxes are defined in `distrobox/distrobox.ini`.
+Some boxes require manual post-install steps.
+See [docs/distrobox-manual-setup.md](docs/distrobox-manual-setup.md).
 
 ## Known Issues
 

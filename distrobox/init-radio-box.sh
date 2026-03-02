@@ -101,12 +101,8 @@ cat > "$HOME/.config/sdrpp/recorder_config.json" <<EOF
 }
 EOF
 
-# export apps and binaries to host
-distrobox-export --app sdrpp
-sed -i 's/Categories=HamRadio/Categories=Network;HamRadio;/' \
-    "/run/host${HOST_HOME}/.local/share/applications/radio-box-sdrpp.desktop"
-distrobox-export --bin /usr/bin/gqrx --export-path "$HOST_HOME/.local/bin"
-distrobox-export --bin /usr/bin/sdrpp --export-path "$HOST_HOME/.local/bin"
+# fix SDR++ categories (HamRadio alone goes to lost+found in KDE)
+sudo sed -i 's/Categories=HamRadio/Categories=Network;HamRadio;/' /usr/share/applications/sdrpp.desktop
 
 setup_zsh
 setup_symlinks

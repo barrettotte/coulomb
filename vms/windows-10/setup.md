@@ -67,4 +67,4 @@ For Fusion 360 and other GPU-heavy apps, you may want to pass through a GPU.
 
 1. Isolate the GPU with `vfio-pci` kernel module (add to kernel args)
 2. Add the GPU as a PCI host device in virt-manager
-3. This is a more involved setup — see the Arch Wiki article on PCI passthrough
+3. This is a more involved setup. See the Arch Wiki article on PCI passthrough

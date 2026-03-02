@@ -1,0 +1,56 @@
+---
+
+- name: Update Host and Distroboxes
+  hosts: localhost
+  connection: local
+
+  vars:
+    distroboxes:
+      - name: dev-box
+        cmd: sudo pacman -Syu --noconfirm
+      - name: ctf-box
+        cmd: sudo apt-get update && sudo apt-get dist-upgrade -y
+      - name: embed-box
+        cmd: sudo apt-get update && sudo apt-get upgrade -y
+      - name: gamedev-box
+        cmd: sudo apt-get update && sudo apt-get upgrade -y
+      - name: radio-box
+        cmd: sudo apt-get update && sudo apt-get upgrade -y
+
+  tasks:
+    # ====================================================
+    # Host - Homebrew
+    # ====================================================
+
+    - name: Update Homebrew packages
+      community.general.homebrew:
+        update_homebrew: true
+        upgrade_all: true
+
+    # ====================================================
+    # Host - Flatpaks
+    # ====================================================
+
+    - name: Update all Flatpaks
+      ansible.builtin.command: flatpak update --noninteractive
+      register: flatpak_update
+      changed_when: "'Nothing to do' not in flatpak_update.stdout"
+      become: true
+
+    # ====================================================
+    # Distroboxes
+    # ====================================================
+
+    - name: Check which distroboxes exist
+      ansible.builtin.command: distrobox list --no-color
+      register: distrobox_list
+      changed_when: false
+
+    - name: Update distrobox
+      ansible.builtin.command: distrobox enter {{ item.name }} -- bash -c "{{ item.cmd }}"
+      when: item.name in distrobox_list.stdout
+      loop: "{{ distroboxes }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: item_result
+      changed_when: "'nothing to do' not in item_result.stdout | lower and '0 upgraded' not in item_result.stdout"
