@@ -1,0 +1,41 @@
+---
+
+- name: Remove All Distroboxes
+  hosts: localhost
+  connection: local
+
+  vars:
+    distrobox_home_prefix: /var/mnt/code/distrobox
+    distrobox_names:
+      - dev-box
+      - ctf-box
+      - embed-box
+      - gamedev-box
+      - radio-box
+
+  tasks:
+    - name: Get list of existing distroboxes
+      ansible.builtin.command: distrobox list --no-color
+      register: distrobox_list
+      changed_when: false
+
+    - name: Remove distrobox
+      ansible.builtin.command: distrobox rm -f {{ item }}
+      when: item in distrobox_list.stdout
+      loop: "{{ distrobox_names }}"
+      register: remove_result
+      changed_when: remove_result.rc == 0
+
+    - name: Remove leftover podman container
+      ansible.builtin.command: podman rm -f {{ item }}
+      when: item in distrobox_list.stdout
+      loop: "{{ distrobox_names }}"
+      register: podman_result
+      changed_when: podman_result.rc == 0
+      failed_when: false
+
+    - name: Remove distrobox home directories
+      ansible.builtin.file:
+        path: "{{ distrobox_home_prefix }}/{{ item }}"
+        state: absent
+      loop: "{{ distrobox_names }}"

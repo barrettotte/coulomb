@@ -115,6 +115,7 @@
         - "{{ ansible_facts['env']['HOME'] }}/.config/plasma-workspace/shutdown"
         - "{{ ansible_facts['env']['HOME'] }}/.config/scopebuddy"
         - "{{ ansible_facts['env']['HOME'] }}/.config/discord-rpc-bridge"
+        - "{{ ansible_facts['env']['HOME'] }}/storage/code/vms"
 
     # ====================================================
     # Symlink Dotfiles
@@ -149,6 +150,8 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/scopebuddy/scb.conf"
         - src: "{{ dotfiles_dir }}/discord-rpc-bridge/config.json"
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/discord-rpc-bridge/config.json"
+        - src: "{{ dotfiles_dir }}/flatpak/overrides/org.virt_manager.virt-manager"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/overrides/org.virt_manager.virt-manager"
 
     # ====================================================
     # JetBrainsMono Nerd Font
@@ -209,6 +212,64 @@
         state: started
       become: true
 
+    - name: Enable bazzite-libvirtd-setup service
+      ansible.builtin.systemd:
+        name: bazzite-libvirtd-setup.service
+        enabled: true
+      become: true
+
+    # ====================================================
+    # Virtualization (QEMU/KVM)
+    # ====================================================
+
+    - name: Set KVM kernel args
+      ansible.builtin.command: rpm-ostree kargs --append-if-missing="kvm.ignore_msrs=1" --append-if-missing="kvm.report_ignored_msrs=0"
+      register: kvm_kargs
+      changed_when: "'Staging' in kvm_kargs.stdout"
+
+    - name: Create swtpm directory
+      ansible.builtin.file:
+        path: /var/lib/swtpm-localca
+        state: directory
+        owner: tss
+        mode: "0755"
+      become: true
+
+    - name: Restore SELinux contexts on libvirt directories
+      ansible.builtin.command: restorecon -rv {{ item }}
+      loop:
+        - /var/lib/libvirt
+        - /var/log/libvirt
+      become: true
+      register: restorecon_result
+      changed_when: restorecon_result.stdout | length > 0
+
+    - name: Check qemu ACL on home directory
+      ansible.builtin.command: getfacl -c {{ ansible_facts['env']['HOME'] }}
+      register: home_acl
+      changed_when: false
+
+    - name: Grant qemu user access to home directory for ISOs
+      ansible.builtin.command: setfacl -m u:qemu:rx {{ ansible_facts['env']['HOME'] }}
+      become: true
+      when: "'user:qemu:r-x' not in home_acl.stdout"
+
+    - name: Create libvirt hooks directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - /etc/libvirt/hooks
+        - /etc/libvirt/hooks/qemu.d
+      become: true
+
+    - name: Download libvirt qemu hooks
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/PassthroughPOST/VFIO-Tools/master/libvirt_hooks/qemu
+        dest: /etc/libvirt/hooks/qemu
+        mode: "0755"
+      become: true
 
     - name: Enable and start podman socket (user)
       ansible.builtin.systemd:

@@ -132,5 +132,6 @@
           - com.feaneron.Boatswain # Elgato Stream Deck
           - io.github.nokse22.Exhibit # 3D model viewer
           - org.openrgb.OpenRGB
+          - org.virt_manager.virt-manager
         remote: flathub
         state: present

@@ -58,7 +58,7 @@ install_apt_base() {
 
 # Install oh-my-zsh with plugins and set zsh as default shell
 setup_zsh() {
-    if [ "$SHELL" != "/usr/bin/zsh" ]; then
+    if [ ! -d "$HOME/.oh-my-zsh" ]; then
         echo "Installing ohmyzsh plugins and changing default shell to Zsh..."
         rm -rf "$HOME/.oh-my-zsh"
 

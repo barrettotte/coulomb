@@ -12,6 +12,28 @@ $ErrorActionPreference = "Stop"
 Write-Host "=== Windows 10 VM Provisioning ===" -ForegroundColor Cyan
 
 # ============================================
+# Bootstrap WinGet
+# ============================================
+
+if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Write-Host "`n=== Installing WinGet ===" -ForegroundColor Cyan
+    $ProgressPreference = 'SilentlyContinue'
+    Install-PackageProvider -Name NuGet -Force | Out-Null
+    Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery | Out-Null
+    Repair-WinGetPackageManager -Force -Latest
+    Write-Host "WinGet installed. Refreshing PATH..."
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+}
+
+# ============================================
+# Timezone / Clock
+# ============================================
+
+Write-Host "`n=== Setting timezone ===" -ForegroundColor Cyan
+Set-TimeZone -Id "Eastern Standard Time"
+w32tm /resync /force 2>&1 | Out-Null
+
+# ============================================
 # WinGet packages
 # ============================================
 
@@ -27,43 +49,46 @@ $packages = @(
     "Microsoft.PowerShell"
     "Microsoft.WindowsTerminal"
 
-    # assembly - MASM via VS Build Tools (includes ml.exe / ml64.exe)
-    "Microsoft.VisualStudio.2022.BuildTools"
-
-    # CAD
-    "Autodesk.Fusion360"
-
     # debuggers / reverse engineering
     "x64dbg.x64dbg"
     "dnSpyEx.dnSpy"
-    "Microsoft.WinDbg"    
+    "Microsoft.WinDbg"
+
+    # virtiofs dependency
+    "WinFsp.WinFsp"
 
     # utilities
     "7zip.7zip"
-    "Microsoft.PowerToys"
     "Microsoft.Sysinternals.Suite"
+
+    # languages
+    "Python.Python.3.13"
+    "GoLang.Go"
+    "Microsoft.DotNet.SDK.8"
+    "Microsoft.OpenJDK.21"
 
     # media
     "VideoLAN.VLC"
+    "dotPDN.PaintDotNet"
 )
 foreach ($pkg in $packages) {
-    Write-Host "Installing $pkg..." -ForegroundColor Yellow
-    winget install --id $pkg --accept-source-agreements --accept-package-agreements --silent
+    $installed = winget list --id $pkg --accept-source-agreements 2>&1
+    if ($installed -match $pkg) {
+        Write-Host "Already installed: $pkg" -ForegroundColor DarkGray
+    } else {
+        Write-Host "Installing $pkg..." -ForegroundColor Yellow
+        winget install --id $pkg --accept-source-agreements --accept-package-agreements --silent
+    }
 }
 
-# ============================================
-# VS Build Tools - MASM workload
-# ============================================
-
-Write-Host "`n=== Installing MASM via VS Build Tools ===" -ForegroundColor Cyan
-
-$vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-if (Test-Path $vsWhere) {
-    $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-    & $vsInstaller modify --installPath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\2022\BuildTools" `
-        --add Microsoft.VisualStudio.Workload.VCTools `
-        --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-        --includeRecommended --passive --norestart
+# Fusion 360 - download bootstrapper directly from Autodesk (winget hash is often stale)
+if (-not (Test-Path "$env:LOCALAPPDATA\Autodesk\webdeploy\production\*\FusionLauncher.exe")) {
+    Write-Host "Installing Fusion 360 (launches in background)..." -ForegroundColor Yellow
+    $fusionInstaller = "$env:TEMP\Fusion360Installer.exe"
+    Invoke-WebRequest -Uri "https://dl.appstreaming.autodesk.com/production/installers/Fusion%20Client%20Downloader.exe" -OutFile $fusionInstaller
+    Start-Process -FilePath $fusionInstaller
+} else {
+    Write-Host "Already installed: Fusion 360" -ForegroundColor DarkGray
 }
 
 # ============================================
@@ -123,10 +148,26 @@ $bloatApps = @(
     "Microsoft.ZuneMusic"
     "Microsoft.ZuneVideo"
     "SpotifyAB.SpotifyMusic"
+    "Microsoft.Office.OneNote"
+    "Microsoft.LinkedInForWindows"
+    "Microsoft.Todos"
+    "Microsoft.OneDriveSync"
+    "Microsoft.WindowsCommunicationsApps"
+    "Microsoft.Wallet"
+    "Microsoft.Print3D"
+    "Microsoft.MSPaint"
+    "Microsoft.WindowsCamera"
+    "Microsoft.GrooveMusic"
 )
 foreach ($app in $bloatApps) {
-    Get-AppxPackage -Name $app -AllUsers -ErrorAction SilentlyContinue | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
-    Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object DisplayName -eq $app | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+    $pkg = Get-AppxPackage -Name $app -AllUsers -ErrorAction SilentlyContinue
+    if ($pkg) {
+        Write-Host "  Removing $app..." -ForegroundColor Yellow
+        $pkg | Remove-AppxPackage -ErrorAction SilentlyContinue
+        Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
+            Where-Object DisplayName -eq $app |
+            Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Out-Null
+    }
 }
 
 # disable Cortana
@@ -221,11 +262,9 @@ if (-not (Test-Path $devModePath)) {
 Set-ItemProperty -Path $devModePath -Name "AllowDevelopmentWithoutDevLicense" -Value 1
 Set-ItemProperty -Path $devModePath -Name "AllowAllTrustedApps" -Value 1
 
-# configure Git line endings
-$gitPath = (Get-Command git -ErrorAction SilentlyContinue).Source
-if ($gitPath) {
-    git config --global core.autocrlf true
-}
+# ============================================
+# Done
+# ============================================
 
 Write-Host "`n=== Provisioning complete ===" -ForegroundColor Green
 Write-Host "Reboot for all settings to take effect."

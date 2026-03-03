@@ -90,7 +90,7 @@ if [ "$FRESH" = true ]; then
     echo "========================================"
     echo "Wiping out existing distroboxes..."
     echo "========================================"
-    bash "$SCRIPT_DIR/distrobox-nuke.sh"
+    "${ANSIBLE_BASE_CMD[@]}" "$ANSIBLE_DIR/playbooks/distrobox-nuke.yml"
 fi
 
 echo ""
