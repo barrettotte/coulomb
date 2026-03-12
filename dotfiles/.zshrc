@@ -31,7 +31,7 @@ if [ -n "$CONTAINER_ID" ]; then
     export PROMPT_COMMAND=""
     export DISTROBOX_ENTER_PROMPT_FIX=0
 
-    PROMPT='📦%{$fg_bold[cyan]%}'"$CONTAINER_ID"'%{$reset_color%} %~ > '
+    PROMPT='%{$fg_bold[cyan]%}'"$CONTAINER_ID"'%{$reset_color%} %~ > '
 fi
 
 if [[ "$CONTAINER_ID" == "ctf-box" ]]; then

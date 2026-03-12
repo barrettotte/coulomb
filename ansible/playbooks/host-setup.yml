@@ -50,6 +50,7 @@
           - git-crypt
           - jq
           - claude-code
+          - p7zip
         state: present
 
     # ====================================================
