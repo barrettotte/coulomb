@@ -1,19 +1,24 @@
 {
-  "scan_interval_seconds": 15,
-  "discord_api_version": 10,
-  "game_cache_ttl_days": 7,
-  "ignored_games": [
-    "SteamLinuxRuntime_soldier",
-    "SteamLinuxRuntime_sniper",
-    "SteamLinuxRuntime",
-    "SteamControllerConfigs",
-    "Proton - Experimental",
-    "Proton Experimental",
-    "Proton 7.0",
-    "Proton 8.0",
-    "Proton 9.0",
-    "Proton Hotfix",
-    "shader_compiler",
-    "reaper"
-  ]
+	"scan_interval_seconds": 15,
+	"discord_api_version": 10,
+	"game_cache_ttl_days": 7,
+	"ignored_games": [
+		"SteamLinuxRuntime_soldier",
+		"SteamLinuxRuntime_sniper",
+		"SteamLinuxRuntime",
+		"SteamControllerConfigs",
+		"Proton - Experimental",
+		"Proton Experimental",
+		"Proton 7.0",
+		"Proton 8.0",
+		"Proton 9.0",
+		"Proton Hotfix",
+		"shader_compiler"
+	],
+	"ignored_processes": [
+		"gamescopereaper",
+		"reaper",
+		"steam-launch-wrapper",
+		"pressure-vessel-wrap"
+	]
 }
