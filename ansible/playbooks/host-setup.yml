@@ -143,6 +143,8 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/nvim"
         - src: "{{ dotfiles_dir }}/autostart/coulomb-session-restore.desktop"
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/autostart/coulomb-session-restore.desktop"
+        - src: "{{ dotfiles_dir }}/autostart/opentabletdriver-kwin-map.desktop"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/autostart/opentabletdriver-kwin-map.desktop"
         - src: "{{ dotfiles_dir }}/plasma-shutdown/coulomb-session-save.sh"
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/plasma-workspace/shutdown/coulomb-session-save.sh"
         - src: "{{ dotfiles_dir }}/kwinrulesrc"
@@ -153,6 +155,8 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/discord-rpc-bridge/config.json"
         - src: "{{ dotfiles_dir }}/flatpak/overrides/org.virt_manager.virt-manager"
           dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/overrides/org.virt_manager.virt-manager"
+        - src: "{{ dotfiles_dir }}/flatpak/overrides/com.discordapp.Discord"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/overrides/com.discordapp.Discord"
 
     # ====================================================
     # JetBrainsMono Nerd Font
@@ -278,6 +282,76 @@
         enabled: true
         state: started
         scope: user
+
+    # ====================================================
+    # OpenTabletDriver (XP-Pen Artist 15.6 Pro)
+    # ====================================================
+    # OTD Artist Mode handles pen input/pressure. Kernel hid_uclogic
+    # driver is blacklisted to avoid conflicts. KWin display mapping
+    # is handled by opentabletdriver-kwin-map autostart script.
+    #
+    # After reboot:
+    #   1. Open OTD GUI, set Output to Artist Mode
+    #   2. Set display area to full virtual desktop (KWin handles monitor mapping)
+    #   3. Clear tip binding (Pen Settings > Tip > ... > Clear)
+
+    - name: Download OpenTabletDriver release tarball
+      ansible.builtin.shell: |
+        curl -s https://api.github.com/repos/OpenTabletDriver/OpenTabletDriver/releases/latest \
+        | jq -r '.assets | sort_by(.created_at) | .[] | select(.name|test("opentabletdriver.*tar.gz$")) | .browser_download_url' \
+        | wget -qi - -O /tmp/opentabletdriver.tar.gz
+      args:
+        creates: /etc/udev/rules.d/71-opentabletdriver.rules
+
+    - name: Extract OpenTabletDriver udev rules
+      ansible.builtin.shell: |
+        mkdir -p /tmp/OpenTabletDriver
+        tar --strip-components=1 -xzf /tmp/opentabletdriver.tar.gz -C /tmp/OpenTabletDriver
+        cp /tmp/OpenTabletDriver/etc/udev/rules.d/70-opentabletdriver.rules /etc/udev/rules.d/71-opentabletdriver.rules
+        rm -rf /tmp/OpenTabletDriver /tmp/opentabletdriver.tar.gz
+      args:
+        creates: /etc/udev/rules.d/71-opentabletdriver.rules
+      become: true
+
+    - name: Install OpenTabletDriver flatpak
+      community.general.flatpak:
+        name: net.opentabletdriver.OpenTabletDriver
+        state: present
+        method: system
+
+    - name: Create OpenTabletDriver config directory
+      ansible.builtin.file:
+        path: "{{ ansible_facts['env']['HOME'] }}/.config/OpenTabletDriver"
+        state: directory
+        mode: "0755"
+
+    - name: Set OpenTabletDriver flatpak override
+      ansible.builtin.command: flatpak override --user --filesystem=xdg-config/OpenTabletDriver net.opentabletdriver.OpenTabletDriver
+      changed_when: false
+
+    - name: Create systemd user directory
+      ansible.builtin.file:
+        path: "{{ ansible_facts['env']['HOME'] }}/.config/systemd/user"
+        state: directory
+        mode: "0755"
+
+    - name: Install OpenTabletDriver systemd user service
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/flathub/net.opentabletdriver.OpenTabletDriver/refs/heads/master/scripts/opentabletdriver.service
+        dest: "{{ ansible_facts['env']['HOME'] }}/.config/systemd/user/opentabletdriver.service"
+        mode: "0644"
+
+    - name: Enable OpenTabletDriver user service
+      ansible.builtin.systemd:
+        name: opentabletdriver.service
+        enabled: true
+        state: started
+        scope: user
+
+    - name: Blacklist kernel tablet drivers for OpenTabletDriver
+      ansible.builtin.command: rpm-ostree kargs --append-if-missing="modprobe.blacklist=hid_uclogic" --append-if-missing="modprobe.blacklist=wacom"
+      register: tablet_kargs
+      changed_when: "'Staging' in tablet_kargs.stdout"
 
     # ====================================================
     # RTL-SDR

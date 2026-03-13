@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=OpenTabletDriver KWin Display Mapping
+Exec=/var/home/barrett/storage/code/repos/coulomb/scripts/opentabletdriver-kwin-map.sh
+X-KDE-autostart-after=panel
+X-KDE-autostart-phase=2
