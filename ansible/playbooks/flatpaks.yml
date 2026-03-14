@@ -129,7 +129,7 @@
         name:
           - com.ranfdev.DistroShelf # GUI for containers
           - io.github.flattool.Warehouse # Manage flatpaks
-          - com.feaneron.Boatswain # Elgato Stream Deck
+          - me.amankhanna.opendeck # Elgato Stream Deck
           - io.github.nokse22.Exhibit # 3D model viewer
           - org.openrgb.OpenRGB
           - org.virt_manager.virt-manager

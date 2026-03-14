@@ -217,11 +217,18 @@
         state: started
       become: true
 
+    - name: Check if bazzite-libvirtd-setup is enabled
+      ansible.builtin.command: systemctl is-enabled bazzite-libvirtd-setup.service
+      register: bazzite_libvirtd_enabled
+      changed_when: false
+      failed_when: false
+
     - name: Enable bazzite-libvirtd-setup service
       ansible.builtin.systemd:
         name: bazzite-libvirtd-setup.service
         enabled: true
       become: true
+      when: bazzite_libvirtd_enabled.stdout != "enabled"
 
     # ====================================================
     # Virtualization (QEMU/KVM)
@@ -352,6 +359,23 @@
       ansible.builtin.command: rpm-ostree kargs --append-if-missing="modprobe.blacklist=hid_uclogic" --append-if-missing="modprobe.blacklist=wacom"
       register: tablet_kargs
       changed_when: "'Staging' in tablet_kargs.stdout"
+
+    # ====================================================
+    # Elgato Stream Deck (OpenDeck)
+    # ====================================================
+
+    - name: Install Stream Deck udev rules
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/OpenActionAPI/rust-elgato-streamdeck/main/40-streamdeck.rules
+        dest: /etc/udev/rules.d/40-streamdeck.rules
+        mode: "0644"
+      become: true
+      register: streamdeck_udev
+
+    - name: Reload udev rules for Stream Deck
+      ansible.builtin.command: udevadm control --reload-rules
+      become: true
+      when: streamdeck_udev.changed
 
     # ====================================================
     # RTL-SDR
