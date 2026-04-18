@@ -40,6 +40,11 @@ fi
 
 if [[ "$CONTAINER_ID" == "dev-box" ]]; then
     export PATH=$PATH:/opt/cuda/bin
+
+    # Android SDK
+    export ANDROID_HOME=$HOME/Android/Sdk
+    export ANDROID_AVD_HOME=$HOME/.config/.android/avd
+    export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
 fi
 
 # aliases

@@ -113,7 +113,6 @@
         - "{{ ansible_facts['env']['HOME'] }}/.local/share/fonts"
         - "{{ ansible_facts['env']['HOME'] }}/.config/coulomb"
         - "{{ ansible_facts['env']['HOME'] }}/.config/autostart"
-        - "{{ ansible_facts['env']['HOME'] }}/.config/plasma-workspace/shutdown"
         - "{{ ansible_facts['env']['HOME'] }}/.config/scopebuddy"
         - "{{ ansible_facts['env']['HOME'] }}/.config/discord-rpc-bridge"
         - "{{ ansible_facts['env']['HOME'] }}/storage/code/vms"
@@ -141,12 +140,10 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/distrobox/distrobox.conf"
         - src: "{{ dotfiles_dir }}/nvim"
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/nvim"
-        - src: "{{ dotfiles_dir }}/autostart/coulomb-session-restore.desktop"
-          dest: "{{ ansible_facts['env']['HOME'] }}/.config/autostart/coulomb-session-restore.desktop"
         - src: "{{ dotfiles_dir }}/autostart/opentabletdriver-kwin-map.desktop"
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/autostart/opentabletdriver-kwin-map.desktop"
-        - src: "{{ dotfiles_dir }}/plasma-shutdown/coulomb-session-save.sh"
-          dest: "{{ ansible_facts['env']['HOME'] }}/.config/plasma-workspace/shutdown/coulomb-session-save.sh"
+        - src: "{{ dotfiles_dir }}/autostart/opendeck.desktop"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/autostart/opendeck.desktop"
         - src: "{{ dotfiles_dir }}/kwinrulesrc"
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/kwinrulesrc"
         - src: "{{ dotfiles_dir }}/scopebuddy/scb.conf"
@@ -157,6 +154,8 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/overrides/org.virt_manager.virt-manager"
         - src: "{{ dotfiles_dir }}/flatpak/overrides/com.discordapp.Discord"
           dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/overrides/com.discordapp.Discord"
+        - src: "{{ dotfiles_dir }}/flatpak/overrides/com.brave.Browser"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/overrides/com.brave.Browser"
 
     # ====================================================
     # JetBrainsMono Nerd Font

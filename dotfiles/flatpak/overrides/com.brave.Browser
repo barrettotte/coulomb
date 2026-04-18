@@ -1,0 +1,3 @@
+[Environment]
+BRAVE_FLAGS=--disable-features=VaapiVideoDecoder,VaapiVideoEncoder
+DRI_PRIME=pci-0000_0b_00_0
