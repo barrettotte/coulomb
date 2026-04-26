@@ -43,7 +43,6 @@
         name:
           - htop
           - fastfetch
-          - zsh
           - feh
           - neovim
           - git-lfs
@@ -51,7 +50,31 @@
           - jq
           - claude-code
           - p7zip
+          - yt-dlp
         state: present
+
+    # ====================================================
+    # rpm-ostree Layered Packages
+    # ====================================================
+
+    # zsh is layered via rpm-ostree (not brew) so the login shell
+    # stays available even if user services / homebrew env have issues.
+
+    - name: Check rpm-ostree layered packages
+      ansible.builtin.command: rpm-ostree status --json
+      register: ostree_status
+      changed_when: false
+
+    - name: Layer zsh via rpm-ostree
+      ansible.builtin.command: rpm-ostree install --idempotent --assumeyes zsh
+      become: true
+      when: "'zsh' not in (ostree_status.stdout | from_json).deployments[0]['requested-packages'] | default([])"
+      register: zsh_layered
+
+    - name: Notify reboot required if zsh was just layered
+      ansible.builtin.debug:
+        msg: "zsh was layered via rpm-ostree — reboot required before it becomes available at /usr/bin/zsh"
+      when: zsh_layered.changed
 
     # ====================================================
     # Oh My Zsh + Plugins
@@ -81,18 +104,12 @@
         depth: 1
       when: omz_dir.stat.exists or not omz_dir.stat.exists
 
-    - name: Register brew zsh in /etc/shells
-      ansible.builtin.lineinfile:
-        path: /etc/shells
-        line: "{{ brew_prefix }}/bin/zsh"
-        state: present
-      become: true
-
-    - name: Set brew zsh as default shell
+    - name: Set zsh as default shell
       ansible.builtin.user:
         name: "{{ ansible_facts['env']['USER'] }}"
-        shell: "{{ brew_prefix }}/bin/zsh"
+        shell: /usr/bin/zsh
       become: true
+      when: ansible_facts['env']['USER'] is defined and (zsh_layered is not defined or not zsh_layered.changed)
 
     # ====================================================
     # Directories
@@ -156,6 +173,10 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/overrides/com.discordapp.Discord"
         - src: "{{ dotfiles_dir }}/flatpak/overrides/com.brave.Browser"
           dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/overrides/com.brave.Browser"
+        - src: "{{ dotfiles_dir }}/flatpak/config/com.brave.Browser/brave-flags.conf"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.var/app/com.brave.Browser/config/brave-flags.conf"
+        - src: "{{ dotfiles_dir }}/systemd/user/plasma-kwin_wayland.service.d"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/systemd/user/plasma-kwin_wayland.service.d"
 
     # ====================================================
     # JetBrainsMono Nerd Font

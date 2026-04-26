@@ -33,5 +33,5 @@ setting this up.
 | 2,0 | Discord | `flatpak-spawn --host flatpak run com.discordapp.Discord` |
 | 2,1 | Spotify | `flatpak-spawn --host flatpak run com.spotify.Client` |
 | 2,2 | Brave | `flatpak-spawn --host flatpak run com.brave.Browser about:blank` |
-| 2,3 | - | |
+| 2,3 | Fishtank | `flatpak-spawn --host flatpak run com.brave.Browser https://www.fishtank.live/` |
 | 2,4 | Mic Mute | `flatpak-spawn --host qdbus org.kde.kglobalaccel /component/kmix invokeShortcut mic_mute` |

@@ -2,7 +2,27 @@
 
 Prerequisites to complete before running `bash init.sh`.
 
-Using image `bazzite-nvidia:stable`
+Using image `bazzite-nvidia-open:stable` (open kernel modules — required for multi-NVIDIA-GPU
+KWin Wayland; avoids cross-GPU dmabuf import failures that cause screen freezes after hours of use).
+
+## Switch image variants
+
+If currently on `bazzite-nvidia` (proprietary modules) and want to move to `bazzite-nvidia-open`:
+
+```sh
+rpm-ostree rebase ostree-image-signed:docker://ghcr.io/ublue-os/bazzite-nvidia-open:stable
+sudo systemctl reboot
+```
+
+To roll back to the previous deployment if something is wrong:
+
+```sh
+rpm-ostree rollback
+sudo systemctl reboot
+```
+
+After confirming the open variant is stable, the old proprietary deployment can be pinned-cleaned
+automatically by rpm-ostree (no manual cleanup required).
 
 ## Drive Mounts
 
