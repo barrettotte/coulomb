@@ -1,3 +1,10 @@
+[Session Bus Policy]
+# Allow Chromium's OSCrypt to reach the FreeDesktop Secret Service (KWallet
+# via ksecretd) so the encrypted auth/session key gets stored in the keyring
+# instead of falling back to --password-store=basic. Reduces the risk of
+# losing login state when Discord is SIGKILL'd at session logout.
+org.freedesktop.secrets=talk
+
 [Environment]
 DISCORD_ENABLE_WAYLAND=1
 ELECTRON_OZONE_PLATFORM_HINT=auto

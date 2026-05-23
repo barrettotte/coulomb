@@ -81,11 +81,18 @@ foreach ($pkg in $packages) {
     }
 }
 
-# Fusion 360 - download bootstrapper directly from Autodesk (winget hash is often stale)
+# Fusion 360 - download bootstrapper directly from Autodesk (winget hash is often stale).
+# Saved to ~/Downloads so the installer can be re-run manually if it stalls
+# (Autodesk's streaming installer occasionally hangs mid-download).
 if (-not (Test-Path "$env:LOCALAPPDATA\Autodesk\webdeploy\production\*\FusionLauncher.exe")) {
-    Write-Host "Installing Fusion 360 (launches in background)..." -ForegroundColor Yellow
-    $fusionInstaller = "$env:TEMP\Fusion360Installer.exe"
-    Invoke-WebRequest -Uri "https://dl.appstreaming.autodesk.com/production/installers/Fusion%20Client%20Downloader.exe" -OutFile $fusionInstaller
+    $fusionInstaller = "$env:USERPROFILE\Downloads\Fusion360Installer.exe"
+    if (-not (Test-Path $fusionInstaller)) {
+        Write-Host "Downloading Fusion 360 installer to $fusionInstaller..." -ForegroundColor Yellow
+        Invoke-WebRequest -Uri "https://dl.appstreaming.autodesk.com/production/installers/Fusion%20Client%20Downloader.exe" -OutFile $fusionInstaller
+    } else {
+        Write-Host "Fusion 360 installer already at $fusionInstaller" -ForegroundColor DarkGray
+    }
+    Write-Host "Launching Fusion 360 installer (runs in background)..." -ForegroundColor Yellow
     Start-Process -FilePath $fusionInstaller
 } else {
     Write-Host "Already installed: Fusion 360" -ForegroundColor DarkGray

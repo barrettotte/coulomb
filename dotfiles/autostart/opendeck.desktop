@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=OpenDeck
-Exec=flatpak run me.amankhanna.opendeck
+Exec=flatpak run me.amankhanna.opendeck --hide
 X-KDE-autostart-after=panel
 X-KDE-autostart-phase=2
 X-GNOME-Autostart-enabled=true

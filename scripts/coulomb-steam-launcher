@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# coulomb-steam-launcher — pin Steam to the RTX 3090 Ti (PCI 10de:2203)
+# for Vulkan/DXVK/VKD3D in this process tree.
+# Invoked from the user-level steam.desktop override; env propagates to all
+# games launched from this Steam instance (Steam UI, native Vulkan, Proton).
+#
+# Layered against:
+#   - KWin compositor pin (KWIN_DRM_DEVICES) — display side
+#   - scopebuddy scb.conf — gamescope-wrapped games
+
+export MESA_VK_DEVICE_SELECT="10de:2203"
+export MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE=1
+export DXVK_FILTER_DEVICE_NAME="RTX 3090"
+export VKD3D_FILTER_DEVICE_NAME="RTX 3090"
+
+exec /usr/bin/bazzite-steam "$@"

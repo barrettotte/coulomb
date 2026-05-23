@@ -1,111 +1,487 @@
 # Windows 10 VM Setup
 
-A Windows 10 QEMU/KVM VM for applications that don't run on Linux (Fusion 360, etc.).
+A Windows 10 QEMU/KVM VM for apps that don't run on Linux (Fusion 360, etc.), 
+with the secondary GPU passed through dynamically - bound to the VM on start, returned to the host on shutdown.
+
+## Hardware
+
+Current setup (re-converged on this after three failed configurations - see [Hardware History](#hardware-history-rejected-configurations) below):
+
+- **Primary GPU (host):** NVIDIA RTX 3090 Ti (Ampere/GA102) at PCI `0000:0d:00.0`, HDMI audio at `0000:0d:00.1`. Drives the host the whole time. On the `nvidia` open kernel module.
+- **Secondary GPU (passthrough):** AMD Radeon RX 7600 (Navi 33, `amdgpu`) at PCI `0000:07:00.0`. Only the GPU function is passed through; HDMI/DP audio at `0000:07:00.1` stays on `snd_hda_intel` on the host (not used inside Windows, and decoupling avoids a separate snd_hda_intel rebind failure). Each function alone in its own IOMMU group (groups 26 and 27).
+- **Host image:** `bazzite-nvidia-open` (open kernel module - works fine with a single Ampere card; nvidia-open's multi-GPU dmabuf issues only surface when *both* GPUs are NVIDIA).
+- **Host audio:** AMD HD Audio at `0f:00.4` - unaffected by any of this.
+
+While the VM runs, monitors connected to the secondary GPU go dark - libvirt hooks disable their KDE outputs before unbinding `amdgpu`. On VM shutdown the release hook does a PCI hot-remove + bus rescan to get the GPU back on `amdgpu` cleanly, but kwin on Wayland doesn't pick up the freshly-enumerated `/dev/dri/cardN` mid-session — **monitors stay dark until a logout/login** (or reboot). Acceptable price of admission for this hardware.
+
+**Status:** two AMD-Navi VFIO kernel bugs on Linux 6.19.x are mitigated by a custom kernel livepatch bundle — see [github.com/barrettotte/vfio-navi-livepatch](https://github.com/barrettotte/vfio-navi-livepatch):
+
+- **Fix 1:** NULL deref in `vfio_pci_core_sriov_configure` (+0x2b) during VM shutdown — see Hardware History entry 1.
+- **Fix 2:** NULL deref in `amdgpu_discovery_sysfs_fini` during amdgpu probe failure on rebind — separate bug exposed by RDNA3's `-EEXIST` reset/state issue.
+
+The release hook (`10-gpu-return.sh`) has a safety gate at the top: it checks `/sys/kernel/livepatch/vfio_navi_livepatch/enabled` and refuses to run the unbind/remove if the livepatch is not active. If the livepatch is missing or disabled, the hook degrades to "leave GPU on vfio-pci" — host monitors stay dark until next reboot but the host stays alive. A forgotten livepatch install (e.g., after switching kernels before DKMS catches up) doesn't surprise-crash the host.
+
+Verify before starting a VM:
+
+```sh
+cat /sys/kernel/livepatch/vfio_navi_livepatch/enabled   # expect 1
+```
+
+When the upstream kernel ships fixes for both code paths (Fix 1: NULL-check `pdev` in `vfio_pci_core_sriov_configure`; Fix 2: the missing `if (!ip_top) return;` guard, slated for Linux 6.20+), uninstall the livepatch and remove the safety-gate block from the release hook.
+
+## Hardware history (rejected configurations)
+
+Three configurations were tried before re-settling on AMD secondary + NVIDIA primary. Do not repeat these without checking whether the underlying root cause has been fixed.
+
+### 1. AMD Radeon RX 7600 (Navi 33) + RTX 3090 Ti - reattempting
+
+- **Bug:** every VM shutdown oopses the kernel in `vfio_pci_core_sriov_configure+0x2b` (NULL pointer deref at `[rdi+0x450]`) inside `vfio_pci_remove`'s SR-IOV cleanup. Both `unbind` and PCI `remove` sysfs paths funnel through the same `vfio_pci_remove` → same crash. Wedges the PCI device for the GPU; host requires a hard power-off to recover.
+- **Scope:** AMD-Navi specific. Confirmed by other users on RX 7600 (Navi 33), RX 7900 series, RX 9070 (Navi 48). See the [CachyOS forum thread](https://discuss.cachyos.org/t/vfio-pci-core-sriov-configure-null-pointer-dereference-with-amd-radeon-rx-9070-navi-48-1002-7550-on-vfio-passthrough/28545).
+- **Status:** open. Different from the unrelated Feb-2025 LKML patch "PCI: Fix NULL dereference in SR-IOV VF creation error path" (different function, different offset).
+- **Why retrying:** of the three configs, this is the only one where the KWin Wayland multi-GPU model works fine (different vendor drivers don't share state). The remaining failure is a well-defined kernel bug that's amenable to either a patched kernel (CachyOS) or a runtime workaround (kprobe module).
+
+### 2. NVIDIA GTX 1070 (Pascal/GP104) + RTX 3090 Ti, proprietary driver - DO NOT REPEAT
+
+- **Why tried:** to eliminate the AMD bug. Pascal cards forced a fallback to the proprietary `nvidia` driver because nvidia-open supports Turing and newer only.
+- **Bug:** at VM start, KWin Wayland still held framebuffer references on the secondary card (cross-GPU dmabuf sharing). When the hook tried to unbind nvidia for the VM, the driver couldn't release framebuffers cleanly → `drm_WARN_ON(!list_empty(&fb->filp_head))` + `NVRM: Attempting to remove device with non-zero usage count!` + `nv_pci_remove_helper` in dmesg → full host session freeze, hard power-off required.
+- **Root cause:** proprietary nvidia shares state across cards bound to the same driver instance. Cannot be patched - closed source, architectural.
+- **Conclusion:** dual NVIDIA + proprietary driver is structurally incompatible with KWin Wayland dynamic passthrough.
+
+### 3. NVIDIA RTX 3050 6GB (Ampere/GA107) + RTX 3090 Ti, nvidia-open - DO NOT REPEAT
+
+- **Why tried:** both Ampere → both supported by nvidia-open. Documentation indicates nvidia-open keeps per-card state isolated and should support multi-NVIDIA dynamic passthrough.
+- **Bug:** identical crash to the proprietary attempt. Pre-VM-start dmesg already showed `Failed to import NVKMS memory to GEM object` errors during normal desktop use. Hook unbind triggered the same `drm_WARN_ON(!list_empty(&fb->filp_head))` + non-zero usage count crash → full host session freeze.
+- **Root cause:** KWin Wayland's multi-NVIDIA-GPU dmabuf path is unstable on both driver variants on the current Plasma version. The "isolated per-card state" promise of nvidia-open doesn't extend to the dmabuf/GEM layer that KWin actually uses for cross-GPU composition.
+- **Conclusion:** dual NVIDIA + KWin Wayland dynamic passthrough is broken regardless of driver variant on this software stack. May change in future Plasma/nvidia-open versions but not worth retesting without explicit upstream confirmation.
+
+### Key takeaways for future hardware decisions
+
+- **Don't pair two NVIDIA GPUs for passthrough on KWin Wayland.** Either driver variant freezes the host on hot-unbind. The "nvidia-open fixes multi-GPU" guidance you'll see online is not borne out on this stack.
+- **Different vendor drivers (NVIDIA primary + non-NVIDIA secondary) is the only configuration where KWin handles dynamic switching cleanly.**
+- **AMD secondary is the most practical choice today** despite the SR-IOV kernel bug, because the bug is specific and patchable rather than architectural. Intel Arc as secondary would also avoid the dual-NVIDIA problem; not tried here.
+- See git history for hooks/XML tweaks from each era if any card returns.
+
+## Critical rules
+
+> **Add the GPU *after* Windows is fully installed and provisioned**, not during
+> the install wizard. Windows installer reboots multiple times. Each reboot is
+> a chance for the libvirt `release/end` and `prepare/begin` hooks to race,
+> leaving the GPU in a half-bound state that requires a host reboot to unwedge.
+> Install Windows on a vanilla VirtIO VM first, snapshot, then add the PCI
+> hostdevs.
+
+> **Always shut the VM down from inside Windows** (Start → Shut Down). A
+> force-poweroff (virt-manager "Force Off" or `virsh destroy`) skips orderly
+> guest device release; the GPU may end up in a state the kernel can't unwind,
+> requiring a host reboot. Hit by this once in initial setup - don't repeat it.
 
 ## Prerequisites
 
-- libvirtd enabled (done by host-setup playbook)
-- Windows 10 ISO from https://www.microsoft.com/software-download/windows10ISO
-- VirtIO drivers ISO from https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso
+- libvirt modular daemons (`virtqemud`/`virtstoraged`/`virtnetworkd`) enabled via socket activation - done by the host-setup playbook.
+- AMD-V/IOMMU enabled in BIOS. Verify with `ls /sys/class/iommu/` (should show `ivhd0`).
+- Secondary GPU function alone in its IOMMU group (no unrelated devices). Audio function `0000:07:00.1` doesn't need to be in any particular group since it's not passed through — it stays on `snd_hda_intel` on the host. Verify:
+  ```sh
+  for d in /sys/kernel/iommu_groups/*/devices/0000:07:00.0; do echo "GPU group: $d"; done
+  ```
+  Nothing unrelated should share the GPU's IOMMU group.
+- `vfio_pci` module loaded (default on Bazzite).
+- Host on `bazzite-nvidia-open` image. The host's 3090 Ti is the only NVIDIA card; the passthrough card is AMD, so the nvidia driver only manages one card and there's no cross-NVIDIA dmabuf risk. (If a second NVIDIA card is ever added, see Hardware History before retrying - dual-NVIDIA dynamic passthrough is broken on this stack.)
+- Windows 10 ISO: https://www.microsoft.com/software-download/windows10ISO
+- VirtIO drivers ISO: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso
 
-## Create VM
+## 1. Install passthrough hooks
 
-### Via virt-manager (Recommended)
+Do this **before** creating the VM - libvirt validates host devices when the domain is defined, and the 
+GPU stays bound to its host driver until the hooks detach it on VM start.
 
-1. Open virt-manager, click "Create a new virtual machine"
-2. Select the Windows 10 ISO
-3. Set RAM (8GB+) and CPUs (4+)
-4. For storage, select "Select or create custom storage" and set the path to `~/storage/code/vms/win10.qcow2` (100GB+ recommended, qcow2 format)
-5. Check "Customize configuration before install"
+```sh
+sudo bash hooks/install.sh
+```
 
-Before starting the install, configure:
+Installs:
 
-- **Overview** > Chipset: Q35
-- **Disk** > Bus: VirtIO (for better performance)
-- **NIC** > Model: virtio
-- **Add Hardware** > Storage > Select `virtio-win.iso` as a CDROM (so VirtIO drivers can be loaded during install)
+- `/etc/libvirt/hooks/qemu` - dispatcher
+- `/etc/libvirt/hooks/qemu.d/win10/prepare/begin/10-gpu-attach.sh`
+- `/etc/libvirt/hooks/qemu.d/win10/release/end/10-gpu-return.sh`
+
+Then restarts `virtqemud.service`.
+
+Also enable XML editing in virt-manager (one-time): **Edit** > **Preferences** > **General** > check **Enable XML editing**.
+
+## 2. Create the VM (no GPU yet)
+
+### Initial wizard (virt-manager)
+
+1. Open virt-manager, click "Create a new virtual machine".
+2. Select the Windows 10 ISO.
+3. Set RAM to **16384 MiB** and CPUs to **16** (8 cores × 2 threads - topology configured below).
+4. For storage, select "Select or create custom storage" and set the path to `~/storage/code/vms/win10.qcow2` (100GB+ recommended, qcow2 format).
+5. Check "Customize configuration before install".
+
+### Pre-install configuration
+
+In the customize view (no PCI hostdevs yet - those come after provisioning):
+
+- **Overview** > Chipset: Q35.
+- **CPUs** > Model: `host-passthrough` (or check "Copy host CPU configuration"). Required for sane GPU perf later; default `qemu64` tanks it.
+- **CPUs** > **Topology** > check "Manually set CPU topology" and set Sockets `1`, Cores `8`, Threads `2`.
+  Windows sees one 8-core / 16-thread CPU rather than 16 single-thread cores, which is what the licensing and scheduler want.
+- **Memory** > set Current and Max allocation to `16384`. Disable ballooning if present (or set memory mode to `strict`) so Windows sees a consistent 16 GiB.
+- **Disk** > Bus: VirtIO.
+- **NIC** > Model: virtio.
+- **Add Hardware** > **Storage** > select `virtio-win.iso` as a CDROM (so VirtIO drivers can be loaded during install).
 
 No TPM or Secure Boot required for Windows 10.
 
 ### During Windows install
 
 When Windows asks "Where do you want to install Windows?" and shows no drives:
-1. Click "Load driver"
-2. Uncheck "Hide drivers that aren't compatible with this computer's hardware"
-3. Browse to the virtio-win CDROM - `amd64\w10`
-4. Select "Red Hat VirtIO SCSI controller" (`viostor.inf`) - not the SCSI pass-through one
-5. The VirtIO disk will appear, proceed with install
 
-### After Windows install
+1. Click "Load driver".
+2. Uncheck "Hide drivers that aren't compatible with this computer's hardware".
+3. Browse to the virtio-win CDROM - `amd64\w10`.
+4. Select "Red Hat VirtIO SCSI controller" (`viostor.inf`) - not the SCSI pass-through one.
+5. The VirtIO disk appears; proceed with install.
 
-1. Mount the virtio-win ISO inside Windows
-2. Run `virtio-win-gt-x64.msi` to install all VirtIO guest drivers (network, display, etc.)
-3. Download and run [SPICE guest tools](https://www.spice-space.org/download/windows/spice-guest-tools/spice-guest-tools-latest.exe) for clipboard sharing and dynamic resolution
-4. Reboot
-5. In virt-manager: **View** > **Scale Display** > check **Auto resize VM with window**
+Don't touch virt-manager during install reboots. Just let it run.
 
-## Provision
+### Post-install setup
 
-Transfer `provision.ps1` to the VM and run in elevated PowerShell:
+1. Mount the virtio-win ISO inside Windows.
+2. Run `virtio-win-gt-x64.msi` to install all VirtIO guest drivers (network, display, etc.).
+3. Download and run [SPICE guest tools](https://www.spice-space.org/download/windows/spice-guest-tools/spice-guest-tools-latest.exe)
+   for clipboard sharing, mouse cursor sync, and dynamic resolution.
+4. Run the provisioning script in elevated PowerShell - installs packages (including WinFsp for virtiofs), applies Windows settings, debloats, installs fonts:
+   ```powershell
+   Invoke-WebRequest -Uri https://raw.githubusercontent.com/barrettotte/coulomb/master/vms/windows-10/provision.ps1 -OutFile provision.ps1
+   Set-ExecutionPolicy Bypass -Scope Process -Force
+   .\provision.ps1
+   ```
+5. **Run Windows Update to completion** - Settings > Update & Security > Check for updates. Loop: install everything, reboot, check again, repeat until "You're up to date" with no pending reboot.
+   Usually 2–4 reboots on a fresh Win10. Do this *before* adding the GPU because every install-time reboot is a chance for the prepare/begin and release/end hooks to race 
+   (see Critical rules). With no `<hostdev>` in the XML yet, the attach hook gates out and reboots are safe.
+6. In virt-manager: **View** > **Scale Display** > check **Auto resize VM with window**.
 
-```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/barrettotte/coulomb/master/vms/windows-10/provision.ps1 -OutFile provision.ps1
-Set-ExecutionPolicy Bypass -Scope Process -Force
-.\provision.ps1
+### Snapshot: `clean-no-gpu`
+
+Shut down the VM cleanly (Start → Shut Down inside Windows), then:
+
+```sh
+virsh -c qemu:///system snapshot-create-as win10 clean-no-gpu
 ```
 
-This installs all packages (including WinFsp), applies Windows settings, debloats, and installs fonts.
+This is the rebuild target if GPU passthrough later breaks - far faster than reinstalling Windows.
 
-## Shared Directory
+## 3. Add GPU passthrough
 
-Uses virtiofs to share a host directory with the VM.
-WinFsp is already installed by `provision.ps1`.
+Done **after** the VM is installed, provisioned, and snapshotted clean. Adding hostdevs mid-install is the leading cause of hook races and host wedges.
+Shut down the VM, then open it in virt-manager and click the lightbulb icon (Show Virtual Hardware Details).
+
+### Attach the GPU
+
+Only the GPU function (`0000:07:00.0`) is passed through. The HDMI/DP audio function (`0000:07:00.1`) is left on `snd_hda_intel` on the host — Windows uses SPICE virtio audio (or USB) and never needs the AMD card's audio path. Keeping audio off the passthrough chain also avoids a snd_hda_intel rebind failure that requires a host reboot to recover from. The two functions sit in separate IOMMU groups, so this split is allowed.
+
+In the hardware details view, **Add Hardware** > **PCI Host Device** > select:
+
+- `0000:07:00:0 ... Navi 33 [Radeon RX 7600 ...]` - the GPU
+
+Click Finish. A new entry appears in the left hardware pane (e.g. `PCI 0000:07:00.0`).
+
+### Patch the hostdev XML
+
+virt-manager's Add Hardware wizard doesn't expose `managed` or `<driver>`, so set those in the XML tab.
+(Enable XML editing in virt-manager Preferences if you haven't - see section 1.)
+
+Click the new GPU entry (`PCI 0000:07:00.0`) and switch to the **XML** tab. Two edits:
+
+1. Change `managed='yes'` to `managed='no'` on the `<hostdev>` line.
+2. Add `<driver name='vfio'/>` as the first child of `<hostdev>`.
+
+Click **Apply**. Final XML:
+
+```xml
+<hostdev mode='subsystem' type='pci' managed='no'>
+  <driver name='vfio'/>
+  <source>
+    <address domain='0x0000' bus='0x07' slot='0x00' function='0x0'/>
+  </source>
+  <address type='pci' domain='0x0000' bus='0x09' slot='0x00' function='0x0'/>
+</hostdev>
+```
+
+The guest `bus`/`slot` values (here `0x09:0x00`) are whatever virt-manager auto-assigned — leave them alone in the common case. There's no `multifunction='on'` because nothing else shares that guest slot.
+
+### First boot with GPU
+
+Start the VM (the play button in virt-manager). The prepare/begin hook will:
+1. Disable the secondary GPU's KDE outputs.
+2. Unbind the host `amdgpu` driver and bind vfio-pci on `0000:07:00.0`. (The audio function `0000:07:00.1` is not touched — it stays on `snd_hda_intel` for the lifetime of the host.)
+
+The monitors connected to the secondary GPU will go dark and stay dark until the guest GPU driver is installed - Windows has no driver for the passed-through card yet.
+Drive the VM through the **virt-manager SPICE window** in the meantime (software-rendered, fine for installing a driver).
+Keyboard and mouse stay with the host; clicking/typing goes into the SPICE window, not the physical monitors. Set up evdev passthrough (section 4) if that gets awkward.
+
+> **SPICE cursor disappearing in regions of the window?** Windows is treating the uninitialized passthrough GPU as a second display adapter and extending the desktop onto it.
+> The cursor "leaves" Display 1 when it crosses into the virtual Display 2 space. Quick fix in Windows: **Settings** > **System** > **Display** > **Multiple displays** > **Show only on 1**.
+> Goes away on its own once the guest GPU driver is installed.
+
+Inside the guest, Windows detects new PCI hardware. Install the AMD driver from https://www.amd.com/en/support → Graphics > Radeon RX 7000 Series > RX 7600 > Windows 10 64-bit. Use the **full offline installer**, not the auto-detect / streaming one (which often hangs on "Downloading & Extracting minimal build"). **Skip the AMD chipset driver bundle** if offered - the VM uses Q35, not an AMD motherboard chipset, and the chipset installer hangs trying to find hardware that doesn't exist.
+
+> **Don't shut down the VM before the AMD driver is installed.** Without a guest driver Windows can't gracefully release the GPU, which compounds the host-side SR-IOV kernel bug on shutdown. Install the driver during the first SPICE session and only shut down afterward.
+
+After driver install, **shut the VM down from inside Windows** (Start > Shut Down), then start it again from virt-manager. Don't use Windows' "Restart" - the VM XML has `<on_reboot>restart</on_reboot>` (libvirt default), which destroys and re-launches the domain on every guest reboot. That fires `release/end` and `prepare/begin` back-to-back with no gap, exactly the hook race the Critical Rules warn about. Shutdown + manual start gives a human-paced gap between the two hook events.
+
+Monitors physically connected to the secondary GPU should now show the Windows desktop at native resolution.
+
+### Snapshot: `with-gpu`
+
+```sh
+virsh -c qemu:///system snapshot-create-as win10 with-gpu
+```
+
+You now have two checkpoints:
+
+- `clean-no-gpu` - rebuild target if passthrough breaks.
+- `with-gpu` - rebuild target if the guest itself misbehaves.
+
+## 4. Input passthrough (evdev hotkey toggle) - optional
+
+Pass the host keyboard + mouse through to the VM via evdev event nodes, with
+a hotkey that toggles ownership between host and guest. Cleaner than SPICE
+grab (Ctrl+Alt) once the secondary-GPU monitor is the VM's real display, and
+cleaner than USB redirection because the hardware never moves between USB
+ports - single keypress to switch sides.
+
+### Identify input devices
+
+```sh
+ls -la /dev/input/by-id/ | grep -E "event-(kbd|mouse)$"
+```
+
+Pick the symlinks for your physical keyboard and mouse. Examples:
+
+- `usb-Logitech_USB_Receiver-if01-event-kbd`
+- `usb-Logitech_USB_Receiver-if02-event-mouse`
+
+If unsure which is which, confirm with `sudo evtest /dev/input/by-id/<candidate>`
+- press a key, see events.
+
+### Add to VM XML
+
+VM must be shut down first (XML changes don't apply to a running domain).
+`sudo virsh -c qemu:///system edit win10` and add inside `<devices>`:
+
+```xml
+<input type='evdev'>
+  <source dev='/dev/input/by-id/usb-Logitech_USB_Receiver-if01-event-kbd'
+          grab='all' grabToggle='ctrl-ctrl' repeat='on'/>
+</input>
+<input type='evdev'>
+  <source dev='/dev/input/by-id/usb-Logitech_USB_Receiver-if02-event-mouse'/>
+</input>
+```
+
+Substitute your actual device paths. Notable attributes:
+
+- `grab='all'` (keyboard only) - captures all key events including the hotkey
+  itself. Required for the toggle to work.
+- `grabToggle='ctrl-ctrl'` - hotkey is both Ctrl keys pressed simultaneously.
+  Other valid values: `alt-alt`, `shift-shift`, `meta-meta`, `scrolllock`,
+  `ctrl-scrolllock`.
+- `repeat='on'` - passes key-repeat events to the guest. Without this, holding
+  a key in the VM registers only one press.
+
+The mouse entry needs no `grab` - it follows the keyboard's grab state.
+
+### Permissions
+
+libvirt's `qemu` user needs read access to `/dev/input/event*`. On Fedora this
+is typically the `input` group. If the VM fails to start with "Permission
+denied" on the event node:
+
+```sh
+sudo usermod -aG input qemu
+sudo systemctl restart virtqemud.service
+```
+
+### Usage
+
+- Start the VM. Initially the host owns keyboard and mouse.
+- Press **both Ctrl keys at the same time** → input flows into the VM.
+- Press **both Ctrl keys** again → input returns to the host.
+- The hotkey is keyboard-only; mouse follows automatically.
+- Status is silent - no on-screen indicator. You'll know which side has it by
+  where typing/clicking goes.
+
+### Gotchas
+
+- Anything else reading `/dev/input/event*` directly conflicts (`evtest`,
+  `xinput test`, certain accessibility tools). Wayland/KDE go through libinput
+  at a higher layer, so the compositor itself is fine.
+- If you also pass through USB devices (e.g., game controllers), don't double-
+  grab the same device via both evdev and USB redirection - pick one path.
+- The hotkey works only while qemu is running and reading the event node. If
+  qemu crashes with input grabbed, the host gets it back automatically.
+
+## 5. Shared directory (virtiofs) - optional
+
+Share a host directory with the VM. WinFsp is already installed by
+`provision.ps1`.
 
 ### Host side (virt-manager)
 
-1. Shut down the VM
-2. In virt-manager, open VM hardware details
-3. **Memory** > Enable shared memory (required for virtiofs)
-4. **Add Hardware** > **Filesystem**
+1. Shut down the VM.
+2. In virt-manager, open VM hardware details.
+3. **Memory** > Enable shared memory (required for virtiofs).
+4. **Add Hardware** > **Filesystem**:
    - Driver: `virtiofs`
    - Source path: `/var/home/barrett/storage/code/repos/coulomb/vms/windows-10`
    - Target path: `share`
-5. Boot the VM
+5. Boot the VM.
 
 ### Guest side (Windows)
 
-1. Mount the virtio-win ISO, browse to `viofs\w10\amd64`, right-click the `.inf` file and Install
-2. Open **Services** (`services.msc`), find **VirtIO-FS Service**, set startup to **Automatic** and click **Start**
-3. The shared directory should appear as a new drive letter (e.g. `Z:`)
+1. Mount the virtio-win ISO, browse to `viofs\w10\amd64`, right-click the
+   `.inf` file and Install.
+2. Open **Services** (`services.msc`), find **VirtIO-FS Service**, set startup
+   to **Automatic** and click **Start**.
+3. The shared directory appears as a new drive letter (e.g. `Z:`).
 
-## Snapshot
+## 6. CPU pinning (Ryzen multi-CCD tuning) - optional
+
+Hardware-specific tuning. Skip on a CPU upgrade until you've re-derived the
+layout. Without pinning the host scheduler does fine; pinning buys 5–10% in
+cache-sensitive workloads on Ryzen by keeping the VM inside one CCD's L3.
+
+Find your CCD layout:
 
 ```sh
-# Take clean snapshot after provisioning
-virsh -c qemu:///system snapshot-create-as win10 provisioned-clean
+lscpu -e=CPU,CORE,L3
 ```
 
-```sh
-# Revert
-virsh -c qemu:///system snapshot-revert win10 provisioned-clean
+Group by the L3 column. Each L3 value is one CCD. Pick a CCD with at least
+8 cores (16 threads counting SMT siblings) and pin the VM there; let the host
+keep the other CCD(s).
+
+For the current 5950X (CCD1 = cores 8–15 + siblings 24–31), add inside
+`<domain>` (sibling of `<vcpu>`):
+
+```xml
+<cputune>
+  <vcpupin vcpu='0'  cpuset='8'/>
+  <vcpupin vcpu='1'  cpuset='24'/>
+  <vcpupin vcpu='2'  cpuset='9'/>
+  <vcpupin vcpu='3'  cpuset='25'/>
+  <vcpupin vcpu='4'  cpuset='10'/>
+  <vcpupin vcpu='5'  cpuset='26'/>
+  <vcpupin vcpu='6'  cpuset='11'/>
+  <vcpupin vcpu='7'  cpuset='27'/>
+  <vcpupin vcpu='8'  cpuset='12'/>
+  <vcpupin vcpu='9'  cpuset='28'/>
+  <vcpupin vcpu='10' cpuset='13'/>
+  <vcpupin vcpu='11' cpuset='29'/>
+  <vcpupin vcpu='12' cpuset='14'/>
+  <vcpupin vcpu='13' cpuset='30'/>
+  <vcpupin vcpu='14' cpuset='15'/>
+  <vcpupin vcpu='15' cpuset='31'/>
+  <emulatorpin cpuset='0-7,16-23'/>
+</cputune>
 ```
 
-## Useful Commands
+vCPU pairs are physical-core + its SMT sibling so the guest's thread
+abstraction matches the host's. `emulatorpin` parks QEMU's I/O and vfio
+interrupt threads on the *other* CCD so they don't fight the guest for cache.
+
+If you upgrade the CPU: drop the `<cputune>` block until you've redone this on
+the new chip.
+
+## Reference
+
+### Snapshot commands
 
 ```sh
-# Check disk image size on host
+# List
+virsh -c qemu:///system snapshot-list win10
+
+# Create
+virsh -c qemu:///system snapshot-create-as win10 <name>
+
+# Revert (VM must be shut off)
+virsh -c qemu:///system snapshot-revert win10 <name>
+```
+
+Reverting `clean-no-gpu` is the fast rebuild path if passthrough breaks - strip
+the hostdevs from the XML, revert, re-add the hostdevs, reinstall the guest
+driver.
+
+### Useful commands
+
+```sh
+# Disk image size on host
 du -h ~/storage/code/vms/win10.qcow2
 
 # Watch disk growth during provisioning
 watch -n 5 du -h ~/storage/code/vms/win10.qcow2
+
+# Driver currently bound to the secondary GPU
+lspci -nnk -s 07:00.0 | grep "Kernel driver"
+
+# Hook logs
+journalctl -t win10-gpu-attach -t win10-gpu-return
 ```
 
-## GPU Passthrough (optional)
+### Troubleshooting
 
-For Fusion 360 and other GPU-heavy apps, you may want to pass through a GPU.
+- **VM start fails with "Failed to mmap" / BAR errors**: check that nothing
+  rebound the GPU after detach. `lspci -nnk -s 07:00.0` should show
+  `Kernel driver in use: vfio-pci` while the VM runs. (The audio function
+  `07:00.1` stays on `snd_hda_intel` — it's not passed through.)
 
-1. Isolate the GPU with `vfio-pci` kernel module (add to kernel args)
-2. Add the GPU as a PCI host device in virt-manager
-3. This is a more involved setup. See the Arch Wiki article on PCI passthrough
+- **VM start hangs ~10 minutes, then fails; virtqemud unresponsive (F44+)**:
+  the journal will show repeated `End of file while reading data: Input/output
+  error` followed by `unsupported configuration: pci backend driver type
+  'default' is not supported` and `Failed to allocate PCI device list`. Root
+  cause is a libvirt 12.0.0 RPC hang in the modular-daemon nodedev path.
+  Two-part fix, both in this repo:
+  1. Domain XML uses `managed='no'` plus `<driver name='vfio'/>` on each
+     `<hostdev>` (see section 3).
+  2. The attach hook binds vfio-pci via sysfs (`driver_override` + unbind
+     from the prior driver + `drivers_probe`) instead of
+     `virsh nodedev-detach`.
 
-TODO: Dynamic GPU passthrough. Pass smaller GPU over only when VM needed?
+  Recovery from a wedged session: usually a reboot - both the libvirt RPC and
+  the hook bash process end up uninterruptible. After reboot, re-enable KDE
+  outputs with `kscreen-doctor output.<name>.enable` if they didn't come back.
+
+- **Monitors stay dark after shutdown (expected after a passthrough cycle)**:
+  this is the documented kwin Wayland limitation. The release hook uses PCI
+  hot-remove + rescan to dodge the RDNA3 `-EEXIST` rebind bug; that creates
+  a fresh `/dev/dri/cardN` that kwin doesn't pick up mid-session. **Logout
+  and log back in** to restore the monitors. If `lspci -nnk -s 07:00.0`
+  shows `Kernel driver in use: amdgpu`, the host side worked correctly —
+  it's purely a kwin re-enumeration issue.
+
+- **Manual GPU recovery (host monitors dark + GPU has no driver)**: the
+  release hook already does this; only needed if the hook was skipped
+  (e.g., livepatch not loaded — see Status above). Manually:
+  ```sh
+  echo 1 | sudo tee /sys/bus/pci/devices/0000:07:00.0/remove
+  echo 1 | sudo tee /sys/bus/pci/rescan
+  ```
+  If the `remove` write itself hangs, the device is stuck in a half-
+  initialized state and only a host reboot recovers.
+
+- **AMD Navi `vfio_pci_core_sriov_configure` NULL deref on VM shutdown**:
+  AMD-Navi-specific kernel bug (RX 7600 / Navi 33 here, also RX 7900, RX
+  9070 reported by others on multiple distros). Without a workaround,
+  every VM shutdown oopses the kernel and wedges the GPU until host
+  reboot. Mitigated by Fix 1 of the [vfio-navi-livepatch
+  bundle](https://github.com/barrettotte/vfio-navi-livepatch) — see
+  Status section at the top of this file. The release hook gates on the
+  livepatch being active and degrades safely otherwise.
+
+- **amdgpu `-EEXIST` from `amdgpu_discovery_sysfs_fini`**: separate bug
+  exposed when amdgpu re-probes a card recently held by vfio-pci.
+  Mitigated by Fix 2 of the same livepatch bundle. The release hook
+  works around the underlying `-EEXIST` itself by using PCI hot-remove
+  + rescan (Option B) — fresh `pci_dev`, no leftover sysfs state.

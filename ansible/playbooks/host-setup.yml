@@ -76,6 +76,38 @@
         msg: "zsh was layered via rpm-ostree — reboot required before it becomes available at /usr/bin/zsh"
       when: zsh_layered.changed
 
+    # libvirt + QEMU + virt-install + UEFI firmware are layered for the
+    # win10 GPU-passthrough VM (see vms/windows-10/setup.md). The bazzite-nvidia
+    # image F43 included libvirt's modular daemons (virtqemud/virtstoraged/
+    # virtnetworkd) in the base image; F44 (~2026-04-30) dropped them. Layering
+    # explicitly makes us immune to that recurring.
+
+    - name: Layer libvirt + QEMU stack via rpm-ostree
+      ansible.builtin.command: >
+        rpm-ostree install --idempotent --assumeyes
+        libvirt qemu-kvm virt-install edk2-ovmf
+      become: true
+      when: "'libvirt' not in (ostree_status.stdout | from_json).deployments[0]['requested-packages'] | default([])"
+      register: libvirt_layered
+
+    - name: Notify reboot required if libvirt was just layered
+      ansible.builtin.debug:
+        msg: "libvirt+qemu was layered via rpm-ostree — reboot required, then re-run init.sh to finish enabling daemons"
+      when: libvirt_layered.changed
+
+    # dkms (Dynamic Kernel Module Support) is layered for third-party
+    # out-of-tree kernel modules that need to survive kernel updates.
+    - name: Layer dkms via rpm-ostree
+      ansible.builtin.command: rpm-ostree install --idempotent --assumeyes dkms
+      become: true
+      when: "'dkms' not in (ostree_status.stdout | from_json).deployments[0]['requested-packages'] | default([])"
+      register: dkms_layered
+
+    - name: Notify reboot required if dkms was just layered
+      ansible.builtin.debug:
+        msg: "dkms was layered via rpm-ostree — reboot required before `dkms` is available on PATH"
+      when: dkms_layered.changed
+
     # ====================================================
     # Oh My Zsh + Plugins
     # ====================================================
@@ -132,6 +164,8 @@
         - "{{ ansible_facts['env']['HOME'] }}/.config/autostart"
         - "{{ ansible_facts['env']['HOME'] }}/.config/scopebuddy"
         - "{{ ansible_facts['env']['HOME'] }}/.config/discord-rpc-bridge"
+        - "{{ ansible_facts['env']['HOME'] }}/.local/share/applications"
+        - "{{ ansible_facts['env']['HOME'] }}/.local/share/konsole"
         - "{{ ansible_facts['env']['HOME'] }}/storage/code/vms"
 
     # ====================================================
@@ -161,8 +195,6 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/autostart/opentabletdriver-kwin-map.desktop"
         - src: "{{ dotfiles_dir }}/autostart/opendeck.desktop"
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/autostart/opendeck.desktop"
-        - src: "{{ dotfiles_dir }}/kwinrulesrc"
-          dest: "{{ ansible_facts['env']['HOME'] }}/.config/kwinrulesrc"
         - src: "{{ dotfiles_dir }}/scopebuddy/scb.conf"
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/scopebuddy/scb.conf"
         - src: "{{ dotfiles_dir }}/discord-rpc-bridge/config.json"
@@ -177,6 +209,16 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.var/app/com.brave.Browser/config/brave-flags.conf"
         - src: "{{ dotfiles_dir }}/systemd/user/plasma-kwin_wayland.service.d"
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/systemd/user/plasma-kwin_wayland.service.d"
+        - src: "{{ dotfiles_dir }}/systemd/user/discord-graceful-quit.service"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.config/systemd/user/discord-graceful-quit.service"
+        # Override the system steam.desktop so launches go through coulomb-steam-launcher,
+        # which pins the RTX 3090 Ti (Vulkan/DXVK/VKD3D).
+        - src: "{{ dotfiles_dir }}/applications/steam.desktop"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/applications/steam.desktop"
+        - src: "{{ dotfiles_dir }}/konsole/Main.profile"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/konsole/Main.profile"
+        - src: "{{ dotfiles_dir }}/konsole/VaporOpaque.colorscheme"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/konsole/VaporOpaque.colorscheme"
 
     # ====================================================
     # JetBrainsMono Nerd Font
@@ -230,25 +272,30 @@
     # Services and Groups
     # ====================================================
 
-    - name: Enable and start libvirtd
+    # libvirt's modular daemons are the Fedora default; libvirtd is legacy
+    # and disabled-by-preset. virt-manager (flatpak'd) and virsh both reach
+    # /run/libvirt/virtqemud-sock via socket activation, so enabling the
+    # sockets is enough — the daemons start on first connection. On the
+    # first run after layering libvirt the units don't exist yet; gate on
+    # virtqemud.socket and skip cleanly until reboot.
+
+    - name: Check for modular libvirt daemon
+      ansible.builtin.stat:
+        path: /usr/lib/systemd/system/virtqemud.socket
+      register: virtqemud_unit
+
+    - name: Enable libvirt modular sockets
       ansible.builtin.systemd:
-        name: libvirtd
+        name: "{{ item }}"
         enabled: true
         state: started
       become: true
-
-    - name: Check if bazzite-libvirtd-setup is enabled
-      ansible.builtin.command: systemctl is-enabled bazzite-libvirtd-setup.service
-      register: bazzite_libvirtd_enabled
-      changed_when: false
-      failed_when: false
-
-    - name: Enable bazzite-libvirtd-setup service
-      ansible.builtin.systemd:
-        name: bazzite-libvirtd-setup.service
-        enabled: true
-      become: true
-      when: bazzite_libvirtd_enabled.stdout != "enabled"
+      loop:
+        - virtqemud.socket       # QEMU domain management
+        - virtstoraged.socket    # storage pools
+        - virtnetworkd.socket    # virtual networks
+        - virtnodedevd.socket    # host PCI/USB enumeration (passthrough)
+      when: virtqemud_unit.stat.exists
 
     # ====================================================
     # Virtualization (QEMU/KVM)
@@ -258,6 +305,20 @@
       ansible.builtin.command: rpm-ostree kargs --append-if-missing="kvm.ignore_msrs=1" --append-if-missing="kvm.report_ignored_msrs=0"
       register: kvm_kargs
       changed_when: "'Staging' in kvm_kargs.stdout"
+
+    # AMD RDNA3 (Navi 33 RX 7600 here) doesn't fully reset when vfio-pci
+    # releases the device, which breaks amdgpu's re-probe path with an
+    # -EEXIST on stale sysfs entries (mem_info_preempt_used etc.). runpm=0
+    # prevents D3cold transitions that confuse re-probe; reset_method=3
+    # (mode2) is the soft reset RDNA3 actually implements cleanly. These
+    # reduce the upstream state corruption that exposes the leak; the
+    # vfio-navi-livepatch bundle handles the kernel NULL-derefs that
+    # would otherwise oops the host on VM shutdown / rebind:
+    #   https://github.com/barrettotte/vfio-navi-livepatch
+    - name: Set amdgpu kernel args for VFIO passthrough rebind (RDNA3 workaround)
+      ansible.builtin.command: rpm-ostree kargs --append-if-missing="amdgpu.runpm=0" --append-if-missing="amdgpu.reset_method=3"
+      register: amdgpu_kargs
+      changed_when: "'Staging' in amdgpu_kargs.stdout"
 
     - name: Create swtpm directory
       ansible.builtin.file:
@@ -286,6 +347,13 @@
       become: true
       when: "'user:qemu:r-x' not in home_acl.stdout"
 
+    # libvirt qemu hooks: per-VM dispatcher + win10 GPU passthrough scripts.
+    # Owned by this playbook rather than the standalone hooks/install.sh so
+    # re-running host-setup doesn't drift. Switched away from the upstream
+    # PassthroughPOST dispatcher because the win10 attach/return scripts
+    # need a simpler dispatcher contract (stdin XML, only prepare/begin
+    # and release/end branches) — see vms/windows-10/hooks/qemu.
+
     - name: Create libvirt hooks directories
       ansible.builtin.file:
         path: "{{ item }}"
@@ -294,14 +362,41 @@
       loop:
         - /etc/libvirt/hooks
         - /etc/libvirt/hooks/qemu.d
+        - /etc/libvirt/hooks/qemu.d/win10/prepare/begin
+        - /etc/libvirt/hooks/qemu.d/win10/release/end
       become: true
 
-    - name: Download libvirt qemu hooks
-      ansible.builtin.get_url:
-        url: https://raw.githubusercontent.com/PassthroughPOST/VFIO-Tools/master/libvirt_hooks/qemu
+    - name: Install libvirt qemu hook dispatcher
+      ansible.builtin.copy:
+        src: "{{ coulomb_dir }}/vms/windows-10/hooks/qemu"
         dest: /etc/libvirt/hooks/qemu
         mode: "0755"
+        remote_src: true
       become: true
+      register: qemu_hook
+
+    - name: Install win10 GPU passthrough hook scripts
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "0755"
+        remote_src: true
+      loop:
+        - src: "{{ coulomb_dir }}/vms/windows-10/hooks/qemu.d/win10/prepare/begin/10-gpu-attach.sh"
+          dest: /etc/libvirt/hooks/qemu.d/win10/prepare/begin/10-gpu-attach.sh
+        - src: "{{ coulomb_dir }}/vms/windows-10/hooks/qemu.d/win10/release/end/10-gpu-return.sh"
+          dest: /etc/libvirt/hooks/qemu.d/win10/release/end/10-gpu-return.sh
+      become: true
+      register: win10_hooks
+
+    - name: Restart virtqemud when hooks change
+      ansible.builtin.systemd:
+        name: virtqemud.service
+        state: restarted
+      become: true
+      when:
+        - virtqemud_unit.stat.exists
+        - qemu_hook.changed or win10_hooks.changed
 
     - name: Enable and start podman socket (user)
       ansible.builtin.systemd:
@@ -433,6 +528,17 @@
         curl -fsSL https://raw.githubusercontent.com/barrettotte/discord-rpc-bridge/master/scripts/download.sh | bash
       args:
         creates: "{{ ansible_facts['env']['HOME'] }}/.local/bin/discord-rpc-bridge"
+
+    # Forces graceful Discord shutdown at session logout so Electron flushes
+    # leveldb before SIGKILL -- otherwise the auth token is lost and Discord
+    # requires a fresh login on every relogin. Symlink is created by the
+    # "Symlink dotfiles" task above; enable wires it into the session target.
+    - name: Enable discord-graceful-quit user service
+      ansible.builtin.systemd:
+        name: discord-graceful-quit.service
+        enabled: true
+        scope: user
+        daemon_reload: true
 
     - name: Check if Daedalus flatpak is installed
       ansible.builtin.stat:

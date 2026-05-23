@@ -1,5 +1,14 @@
 [Context]
 filesystems=/home/barrett/repos/coulomb/dotfiles:ro;
 
+# Pin GPU rendering to the NVIDIA RTX 3090 Ti (PCI 0000:0d:00.0).
+# The host has a secondary AMD Radeon RX 7600 (PCI 0000:07:00.0) that gets
+# passed through to the Win10 VM via vfio-pci. Apps holding DRI/Vulkan
+# handles on amdgpu when the hooks unbind it for the VM crash hard (Brave
+# exits, VS Code freezes). Pinning rendering to the 3090 Ti keeps the
+# browser unaffected regardless of VM state.
 [Environment]
-DRI_PRIME=pci-0000_0b_00_0
+DRI_PRIME=pci-0000_0d_00_0
+__GLX_VENDOR_LIBRARY_NAME=nvidia
+__NV_PRIME_RENDER_OFFLOAD=1
+MESA_VK_DEVICE_SELECT=10de:2203

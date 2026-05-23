@@ -1,0 +1,28 @@
+[Unit]
+# Forces a graceful shutdown of the Discord flatpak when the user's
+# graphical session ends. Without this, KDE logout kills Discord via the
+# generic user@.service teardown - Electron rarely flushes leveldb in the
+# 15s window before SIGKILL, which corrupts the Local Storage entry that
+# holds the auth token and forces a fresh login on next launch.
+#
+# Mechanism: this is a "stop-only" oneshot unit bound to
+# graphical-session.target. On login it runs /bin/true and sticks around
+# (RemainAfterExit). On logout, the target stops, our ExecStop runs
+# `flatpak kill` which sends SIGTERM to Discord (and SIGKILLs only after
+# its own internal grace), giving Electron time to flush leveldb to disk.
+Description=Gracefully quit Discord at session end
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/usr/bin/flatpak kill com.discordapp.Discord
+# Tolerate "Discord not running" (flatpak kill exits non-zero) so logout
+# isn't blocked when Discord wasn't launched this session.
+SuccessExitStatus=0 1
+TimeoutStopSec=20s
+
+[Install]
+WantedBy=graphical-session.target

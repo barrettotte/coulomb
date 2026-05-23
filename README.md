@@ -50,24 +50,6 @@ All distroboxes are defined in `distrobox/distrobox.ini`.
 Some boxes require manual post-install steps.
 See [docs/distrobox-manual-setup.md](docs/distrobox-manual-setup.md).
 
-## Known Issues
-
-### Multi-GPU "Fun"
-
-I have a GTX 1030 and an RTX 3090 Ti, but my BIOS has the 1030 with a higher PCI bus number.
-This causes the boot process to not show logs during boot even after trying with various kernel args.
-This also causes other issues where sometimes the 1030 is used instead of the 3090 (Steam).
-I hope to continually tweak to fix this or maybe even figure out a better workaround.
-
-Also, there's some kind of weird race condition where sometimes rebooting causes three dots to be displayed
-on a monitor connected to the 1030. The system kind of gets stuck, but hard powering off fixes this most times.
-The race condition behavior might have been an issue only on Fedora Kinoite 43 <2026, hasn't happened on Bazzite so far.
-
-#### Bazzite Specific
-
-For Bazzite, I need to use `bazzite-nvidia` instead of `bazzite-nvidia-open` so I can have Pascal architecture support for the GTX 1030.
-Also have to add this command to each game's launch options to use the correct GPU.
-
 ## References
 
 - https://github.com/nvim-lua/kickstart.nvim

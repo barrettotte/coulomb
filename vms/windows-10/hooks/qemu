@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# libvirt qemu hook dispatcher.
+# Installed at /etc/libvirt/hooks/qemu. Routes per-VM events to scripts in
+# /etc/libvirt/hooks/qemu.d/<vm>/<op>/<state>.
+
+set -e
+
+GUEST="$1"
+OP="$2"
+STATE="$3"
+
+HOOK_DIR="/etc/libvirt/hooks/qemu.d/${GUEST}/${OP}/${STATE}"
+[ -d "$HOOK_DIR" ] || exit 0
+
+for script in "$HOOK_DIR"/*; do
+  [ -x "$script" ] || continue
+  "$script" "$@"
+done

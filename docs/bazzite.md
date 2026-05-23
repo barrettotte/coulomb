@@ -2,15 +2,43 @@
 
 Prerequisites to complete before running `bash init.sh`.
 
-Using image `bazzite-nvidia-open:stable` (open kernel modules — required for multi-NVIDIA-GPU
-KWin Wayland; avoids cross-GPU dmabuf import failures that cause screen freezes after hours of use).
+Using image `bazzite-nvidia-open:stable` (open kernel module).
+
+Why the open module:
+
+- **Better long-session stability with NVIDIA on KWin Wayland.** The proprietary driver had
+  cross-GPU dmabuf import failures that caused screen freezes after hours of use even with
+  a single GPU. nvidia-open avoids those.
+- **All current cards in the system are Turing+** (RTX 3090 Ti / GA102 Ampere), supported by
+  the open module. If a Pascal or older NVIDIA card is ever added, the open driver won't bind
+  to it; the fallback is rebasing to proprietary `bazzite-nvidia`, but that loses the
+  long-session stability above.
+
+**Hard-learned constraint: do NOT pair two NVIDIA GPUs for VFIO passthrough on this stack.**
+Both `bazzite-nvidia` (proprietary) and `bazzite-nvidia-open` were tested with a second
+NVIDIA card in 2026-05 (GTX 1070 Pascal + 3090 Ti, then RTX 3050 6GB Ampere + 3090 Ti).
+Both froze the host on VM start with `drm_WARN_ON(!list_empty(&fb->filp_head))` +
+`NVRM: Attempting to remove device with non-zero usage count!` - KWin Wayland holds
+framebuffers on the secondary NVIDIA card that the nvidia driver can't release on hot-unbind.
+Driver variant doesn't matter; it's a KWin/nvidia-multi-GPU integration issue. See
+`vms/windows-10/setup.md` Hardware History for the full incident notes. Use a non-NVIDIA
+secondary (AMD, Intel) if you want dynamic GPU passthrough on this host.
 
 ## Switch image variants
 
-If currently on `bazzite-nvidia` (proprietary modules) and want to move to `bazzite-nvidia-open`:
+Current → open (required for the dynamic-passthrough workflow with multiple Turing+ NVIDIA GPUs):
 
 ```sh
 rpm-ostree rebase ostree-image-signed:docker://ghcr.io/ublue-os/bazzite-nvidia-open:stable
+sudo systemctl reboot
+```
+
+Fallback → proprietary (only needed if a Pascal or older NVIDIA card is plugged in and must
+have a host driver - accept that dynamic GPU passthrough won't work reliably until that card
+is removed):
+
+```sh
+rpm-ostree rebase ostree-image-signed:docker://ghcr.io/ublue-os/bazzite-nvidia:stable
 sudo systemctl reboot
 ```
 
@@ -21,8 +49,8 @@ rpm-ostree rollback
 sudo systemctl reboot
 ```
 
-After confirming the open variant is stable, the old proprietary deployment can be pinned-cleaned
-automatically by rpm-ostree (no manual cleanup required).
+After confirming the new variant is stable, the old deployment can be pinned-cleaned automatically
+by rpm-ostree (no manual cleanup required).
 
 ## Drive Mounts
 

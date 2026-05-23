@@ -1,0 +1,47 @@
+[Desktop Entry]
+Name=Steam
+Comment=Application for managing and playing games on Steam (RTX 3090 Ti pinned)
+Exec=/home/barrett/repos/coulomb/scripts/coulomb-steam-launcher %U
+Icon=steam
+Terminal=false
+Type=Application
+Categories=Network;FileTransfer;Game;
+MimeType=x-scheme-handler/steam;x-scheme-handler/steamlink;
+Actions=Store;Community;Library;Servers;Screenshots;News;Settings;BigPicture;Friends;
+X-Desktop-File-Install-Version=0.28
+
+[Desktop Action Store]
+Name=Store
+Exec=/home/barrett/repos/coulomb/scripts/coulomb-steam-launcher steam://store
+
+[Desktop Action Community]
+Name=Community
+Exec=/home/barrett/repos/coulomb/scripts/coulomb-steam-launcher steam://url/CommunityHome/
+
+[Desktop Action Library]
+Name=Library
+Exec=/home/barrett/repos/coulomb/scripts/coulomb-steam-launcher steam://open/games
+
+[Desktop Action Servers]
+Name=Servers
+Exec=/home/barrett/repos/coulomb/scripts/coulomb-steam-launcher steam://open/servers
+
+[Desktop Action Screenshots]
+Name=Screenshots
+Exec=/home/barrett/repos/coulomb/scripts/coulomb-steam-launcher steam://open/screenshots
+
+[Desktop Action News]
+Name=News
+Exec=/home/barrett/repos/coulomb/scripts/coulomb-steam-launcher steam://openurl/https://store.steampowered.com/news
+
+[Desktop Action Settings]
+Name=Settings
+Exec=/home/barrett/repos/coulomb/scripts/coulomb-steam-launcher steam://open/settings
+
+[Desktop Action BigPicture]
+Name=Big Picture
+Exec=/home/barrett/repos/coulomb/scripts/coulomb-steam-launcher steam://open/bigpicture
+
+[Desktop Action Friends]
+Name=Friends
+Exec=/home/barrett/repos/coulomb/scripts/coulomb-steam-launcher steam://open/friends

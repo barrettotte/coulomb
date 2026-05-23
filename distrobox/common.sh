@@ -77,6 +77,24 @@ setup_symlinks() {
     ln -snf "$HOST_HOME/.ssh" "$HOME/.ssh"
 }
 
+# Pin OpenGL / Vulkan / DRI offload inside the container to the NVIDIA RTX
+# 3090 Ti (PCI 0000:0d:00.0). The host has a secondary AMD Radeon RX 7600
+# (PCI 0000:07:00.0) that gets passed through to the Win10 VM via vfio-pci.
+# Container apps inherit /dev/dri/* from the host, so without this pin a
+# GUI app inside a distrobox can pick up the AMD card and crash hard when
+# the libvirt hooks unbind amdgpu on VM start (Electron renderers die,
+# OpenGL contexts disappear). distrobox-enter goes through `su -` so
+# /etc/profile.d/*.sh is sourced for the launched command.
+pin_nvidia_gpu() {
+    sudo tee /etc/profile.d/nvidia-pin.sh > /dev/null <<'EOF'
+export DRI_PRIME=pci-0000_0d_00_0
+export __GLX_VENDOR_LIBRARY_NAME=nvidia
+export __NV_PRIME_RENDER_OFFLOAD=1
+export MESA_VK_DEVICE_SELECT=10de:2203
+EOF
+    sudo chmod 0644 /etc/profile.d/nvidia-pin.sh
+}
+
 # Write marker file and print completion message
 init_end() {
     touch "$MARKER_FILE"
