@@ -13,26 +13,20 @@
 # process via SIGSEGV.
 #
 # amdgpu's new instance gets a renumbered /dev/dri/cardN and renumbered DRM
-# connectors (DP-1 → DP-7, etc). KWin's hot-plug originally failed here:
-# kwin's udev "add" handler races udev's /dev/dri/cardN creation, queries
-# device->devNode() before it's populated, gets empty string → "Failed to
-# open drm device " (trailing space, empty filename) → gives up immediately
-# (the EBusy retry loop in kwin's addGpu doesn't help because stat("") fails
-# with ENOENT). The fix in this hook waits for /dev/dri/by-path/pci-*-card
-# to materialize, then fires a synthetic udev "change" event — kwin's change
-# handler also calls addGpu() with the now-populated devNode and succeeds.
+# connectors (DP-1 -> DP-7, etc). Two pieces make the cycle recover cleanly
+# without logout:
+#   1. KWIN_DRM_DEVICES (set in the systemd user unit override in dotfiles)
+#      uses /dev/dri/by-path/pci-...-card symlinks with escaped colons.
+#      KWin canonicalizes these at event time, so they re-resolve to the
+#      current cardN per event - hardcoded cardN would filter out the new
+#      card after VFIO release and the GPU never re-attaches.
+#   2. A 3-second sleep below before kscreen-doctor enable, so kscreen-doctor
+#      finds the connector names in KWin's model (which take a moment to
+#      register after addGpu).
 #
 # Audio function: snd_hda_intel may not re-bind cleanly if the function
 # came back from the guest in D3 — non-fatal here (host doesn't use HDMI
 # audio), the audio rebind state is logged but the script continues.
-#
-# Historical note: an earlier version of this hook gated the remove behind
-# the vfio-navi-livepatch bundle (a set of NULL-guard livepatches on
-# vfio_pci_remove cleanup paths). With both GPU functions passed through
-# together, the wedged-state preconditions for those bugs don't manifest —
-# the cycle is clean without the livepatch. Gate removed; livepatch repo
-# preserved at github.com/barrettotte/vfio-navi-livepatch in case a future
-# kernel regression re-introduces the bugs.
 
 set -euo pipefail
 
@@ -82,38 +76,21 @@ log "GPU driver bound: ${driver:-unknown}"
 audio_driver=$(basename "$(readlink -f "/sys/bus/pci/devices/${GPU_AUDIO_PCI}/driver" 2>/dev/null)" 2>/dev/null || true)
 log "audio driver bound: ${audio_driver:-unbound (host HDMI audio stays dark until reboot — acceptable)}"
 
-# kwin hot-plug fix: kwin's udev "add" event handler races with udev's
-# /dev/dri/cardN creation. When amdgpu registers the DRM device, the kernel
-# fires the netlink event immediately, but /dev/dri/cardN doesn't exist yet
-# (it's created by a later udev rule pass). kwin catches the add event,
-# queries device->devNode(), gets an empty string, calls addGpu("") →
-# stat("") fails → "Failed to open drm device " (trailing space). The retry
-# loop in kwin's addGpu only retries on EBusy, not ENOENT, so it gives up
-# immediately and the GPU stays unattached for the session.
+# Give KWin time to register the freshly-rebound DRM device before the
+# kscreen-doctor enable call below. Without this delay, kscreen-doctor's
+# `output.<name>.enable` runs before KWin has finished addGpu(), the
+# connector names are not yet in KWin's model, the enable silently fails,
+# and the AMD outputs come back DISABLED in kwin even though kwin has the
+# GPU. 3s is empirically sufficient on this hardware.
 #
-# Fix: after amdgpu rebinds, wait for /dev/dri/by-path/pci-*-card symlink
-# to materialize, udevadm settle, then fire a synthetic "change" event on
-# the now-fully-populated device. kwin's change handler (drm_backend.cpp
-# lines 219-227) calls addGpu() with a populated devNode() if no existing
-# gpu is found — which succeeds because by now the /dev/dri/cardN file
-# actually exists.
-log "kwin hot-plug fix: wait for /dev/dri symlink + replay udev change event"
-by_path="/dev/dri/by-path/pci-${GPU_PCI}-card"
-for _ in $(seq 1 30); do
-  [ -e "$by_path" ] && break
-  sleep 0.1
-done
-if [ -e "$by_path" ]; then
-  udevadm settle --timeout=3
-  card_node=$(readlink -f "$by_path")
-  log "replaying udev change for $card_node (kwin will reopen with populated devNode)"
-  udevadm trigger --action=change "$card_node" || \
-    log "(udevadm trigger failed — kwin may not pick up GPU until logout)"
-  # Give kwin a moment to process the change event before kscreen-doctor.
-  sleep 1
-else
-  log "(timeout waiting for $by_path — udev rules slow or didn't run)"
-fi
+# Required companion: KWIN_DRM_DEVICES env (set via systemd user override
+# in dotfiles/systemd/user/plasma-kwin_wayland.service.d/override.conf)
+# uses by-path symlinks with escaped colons so KWin's explicit-GPU
+# allowlist re-resolves to the *current* cardN per udev event. Without
+# that, post-VFIO-release events get filtered out by KWin and addGpu is
+# never even attempted for the new card.
+log "wait 3s for kwin to register new DRM device before kscreen-doctor enable"
+sleep 3
 
 # Capture connector names AFTER amdgpu rebinds (post-rebind connector
 # numbers are stable for the new amdgpu instance — e.g. DP-7, DP-8 — and

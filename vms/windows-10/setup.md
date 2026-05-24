@@ -12,17 +12,21 @@ Current setup (re-converged on this after three failed configurations - see [Har
 - **Host image:** `bazzite-nvidia-open` (open kernel module - works fine with a single Ampere card; nvidia-open's multi-GPU dmabuf issues only surface when *both* GPUs are NVIDIA).
 - **Host audio:** AMD HD Audio at `0f:00.4` - unaffected by any of this.
 
-While the VM runs, monitors connected to the secondary GPU go dark - libvirt hooks disable their KDE outputs before unbinding `amdgpu`. On VM shutdown the release hook unbinds both functions from `vfio-pci`, lets the kernel rebind `amdgpu` + `snd_hda_intel` via modalias, then fires a synthetic udev `change` event on the new `/dev/dri/cardN` to nudge kwin into attaching to it. **The AMD monitors come back automatically** — no logout/login required, no manual intervention.
+While the VM runs, monitors connected to the secondary GPU go dark - libvirt hooks disable their KDE outputs before unbinding `amdgpu`. On VM shutdown the release hook unbinds both functions from `vfio-pci`, lets the kernel rebind `amdgpu` + `snd_hda_intel` via modalias, sleeps briefly to let KWin register the new GPU, then re-enables outputs via `kscreen-doctor`. **The AMD monitors come back automatically** — no logout/login required, no manual intervention.
 
-**Status:** no kernel livepatch required. Earlier iterations needed a bundle of NULL-guard livepatches ([github.com/barrettotte/vfio-navi-livepatch](https://github.com/barrettotte/vfio-navi-livepatch)) to survive the release-side `vfio_pci_remove` chain — those bugs only triggered when the GPU was wedged from incomplete passthrough (audio function held by host while VGA went to VM). With both functions passed through together, the wedge preconditions don't occur and the release cycle is clean. Livepatch repo preserved in case a future kernel regression re-introduces the bugs.
+**Status:** working end-to-end with no kernel patches. The previously-feared `vfio_pci_remove` NULL-deref cleanup chain only fires when the GPU is wedged from incomplete passthrough (audio function held by host while VGA goes to VM); passing both functions through together avoids the wedge preconditions, so the release cycle is clean on stock kernels.
 
-### The kwin hot-plug fix in the release hook
+### The KWin hot-plug recovery (two pieces)
 
-KWin's hot-plug handler races udev's device-node creation. When amdgpu registers its new DRM device after `drivers_probe`, the kernel fires the udev `add` netlink event immediately — but `/dev/dri/cardN` isn't created until a subsequent udev rule pass runs. KWin catches the event in that race window, queries `device->devNode()`, gets an empty string, calls its internal `addGpu("")`. The `stat("")` inside kwin's `LogindSession::openRestricted` returns `ENOENT`. The retry loop in kwin's `addGpu` only retries on `EBusy`, so it gives up immediately. Journal shows the smoking gun: `"Failed to open drm device "` (trailing space, no path).
+After VFIO release, `amdgpu` gets a new `/dev/dri/cardN` minor (e.g. `card1 → card3`) and renumbered DRM connectors (e.g. `DP-1 → DP-7`). Getting KWin to re-attach the GPU and re-enable its outputs needs two pieces working together:
 
-The fix in the release hook is small: after `drivers_probe`, wait for the `/dev/dri/by-path/pci-...-card` symlink to materialize, `udevadm settle` to drain the queue, then fire a synthetic `udevadm trigger --action=change` on the now-fully-populated device. KWin's `change` handler (drm_backend.cpp ~lines 219-227) also calls `addGpu()` if no existing GPU is found — but this time the path is populated, `openRestricted` succeeds via logind's `TakeDevice`, the GPU attaches, outputs come up. KWin recognizes the monitors by EDID, so display priority/position are preserved across the cycle.
+**1. `KWIN_DRM_DEVICES` with by-path symlinks (escaped colons).** KWin's DRM backend filters udev events against an explicit allowlist if `KWIN_DRM_DEVICES` is set. The allowlist entries are canonicalized at *each event* via `QFileInfo::canonicalFilePath()`, so by-path symlinks re-resolve to whatever cardN is current. With hardcoded `/dev/dri/cardN`, post-VFIO events for a renumbered minor get filtered out and the GPU never re-attaches.
 
-Source kwin code references: [drm_backend.cpp](https://github.com/KDE/kwin/blob/master/src/backends/drm/drm_backend.cpp) (event handler + addGpu retry loop), [session_logind.cpp](https://github.com/KDE/kwin/blob/master/src/core/session_logind.cpp) (openRestricted / TakeDevice).
+The override lives at `dotfiles/systemd/user/plasma-kwin_wayland.service.d/override.conf`. The PCI address colons must be `\\:` in the systemd unit file (systemd's parser turns `\\` into `\`, kwin's `splitPathList` then sees `\:` and treats it as a literal colon, not a path-list delimiter). A bare unescaped `:` would split each by-path entry into 3 fragments and break kwin startup with "No suitable DRM devices have been found."
+
+**2. A 3-second sleep before `kscreen-doctor enable`.** After `amdgpu` rebinds, KWin's `addGpu` succeeds (the kernel-fired add event eventually wins the file-creation race), but KWin needs a moment to register the new GPU's connector names in its model. Without the sleep, the hook's `kscreen-doctor output.DP-N.enable` runs before the connector names exist in KWin → silent "output not found" → AMD outputs come back to KWin but **stay disabled**, requiring a manual `kscreen-doctor` enable. 3s is empirically sufficient.
+
+KWin source references for the curious: [`drm_backend.cpp`](https://github.com/KDE/kwin/blob/master/src/backends/drm/drm_backend.cpp) (`splitPathList`, `handleUdevEvent`, `addGpu`), [`session_logind.cpp`](https://github.com/KDE/kwin/blob/master/src/core/session_logind.cpp) (`openRestricted` / `TakeDevice`).
 
 ### Fallback safeguard + recovery
 
@@ -495,17 +499,17 @@ journalctl -t win10-gpu-attach -t win10-gpu-return
   the hook bash process end up uninterruptible. After reboot, re-enable KDE
   outputs with `kscreen-doctor output.<name>.enable` if they didn't come back.
 
-- **Monitors stay dark after shutdown (expected after a passthrough cycle)**:
-  this is the documented kwin Wayland limitation. The release hook uses PCI
-  hot-remove + rescan to dodge the RDNA3 `-EEXIST` rebind bug; that creates
-  a fresh `/dev/dri/cardN` that kwin doesn't pick up mid-session. **Logout
-  and log back in** to restore the monitors. If `lspci -nnk -s 07:00.0`
-  shows `Kernel driver in use: amdgpu`, the host side worked correctly —
-  it's purely a kwin re-enumeration issue.
+- **Monitors stay dark after shutdown** (no longer expected — both the
+  by-path `KWIN_DRM_DEVICES` and the post-rebind sleep need to be in
+  place). If they don't come back automatically, check the release hook
+  log via `journalctl -t win10-gpu-return` and KWin's hot-plug behavior
+  via `journalctl _COMM=kwin_wayland --since "5 minutes ago"`. Manual
+  recovery: `kscreen-doctor output.DP-1.enable output.DP-2.enable`
+  (substitute your AMD connector names).
 
 - **Manual GPU recovery (host monitors dark + GPU has no driver)**: the
-  release hook already does this; only needed if the hook was skipped
-  (e.g., livepatch not loaded — see Status above). Manually:
+  release hook already does this; only needed if the hook didn't run or
+  failed mid-way. Manually:
   ```sh
   echo 1 | sudo tee /sys/bus/pci/devices/0000:07:00.0/remove
   echo 1 | sudo tee /sys/bus/pci/rescan
@@ -517,13 +521,10 @@ journalctl -t win10-gpu-attach -t win10-gpu-return
   AMD-Navi-specific kernel bug (RX 7600 / Navi 33 here, also RX 7900, RX
   9070 reported by others on multiple distros). Without a workaround,
   every VM shutdown oopses the kernel and wedges the GPU until host
-  reboot. Mitigated by Fix 1 of the [vfio-navi-livepatch
-  bundle](https://github.com/barrettotte/vfio-navi-livepatch) — see
-  Status section at the top of this file. The release hook gates on the
-  livepatch being active and degrades safely otherwise.
-
-- **amdgpu `-EEXIST` from `amdgpu_discovery_sysfs_fini`**: separate bug
-  exposed when amdgpu re-probes a card recently held by vfio-pci.
-  Mitigated by Fix 2 of the same livepatch bundle. The release hook
-  works around the underlying `-EEXIST` itself by using PCI hot-remove
-  + rescan (Option B) — fresh `pci_dev`, no leftover sysfs state.
+  reboot. The preconditions for this fault (and the related
+  `amdgpu_discovery_sysfs_fini` NULL deref) only fire when the GPU is in
+  a wedged state — typically from incomplete passthrough where only the
+  VGA function is passed and the audio function is held by the host.
+  Passing both functions through together (this setup) avoids the wedge,
+  so the bugs don't trigger on the working path. If you hit them after a
+  hard power-off or other unusual state, a host reboot recovers.

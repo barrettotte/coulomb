@@ -319,8 +319,6 @@
     # `reset_method` is intentionally not set: init-time asic reset uses
     # ASIC defaults regardless of the module param (per amd-gfx Apr 2023
     # patch series), so setting it is a no-op for our re-probe failure.
-    # The vfio-navi-livepatch bundle handles the residual kernel NULL-derefs:
-    #   https://github.com/barrettotte/vfio-navi-livepatch
     - name: Set amdgpu kernel args for VFIO passthrough rebind (RDNA3 workaround)
       ansible.builtin.command: >-
         rpm-ostree kargs
