@@ -8,26 +8,42 @@ with the secondary GPU passed through dynamically - bound to the VM on start, re
 Current setup (re-converged on this after three failed configurations - see [Hardware History](#hardware-history-rejected-configurations) below):
 
 - **Primary GPU (host):** NVIDIA RTX 3090 Ti (Ampere/GA102) at PCI `0000:0d:00.0`, HDMI audio at `0000:0d:00.1`. Drives the host the whole time. On the `nvidia` open kernel module.
-- **Secondary GPU (passthrough):** AMD Radeon RX 7600 (Navi 33, `amdgpu`) at PCI `0000:07:00.0`. Only the GPU function is passed through; HDMI/DP audio at `0000:07:00.1` stays on `snd_hda_intel` on the host (not used inside Windows, and decoupling avoids a separate snd_hda_intel rebind failure). Each function alone in its own IOMMU group (groups 26 and 27).
+- **Secondary GPU (passthrough):** AMD Radeon RX 7600 (Navi 33, `amdgpu`) at PCI `0000:07:00.0`. Both functions are passed through together as a multifunction device — GPU at `0000:07:00.0` (function 0) and HDMI/DP audio at `0000:07:00.1` (function 1). Each is alone in its own IOMMU group (26 and 27). The AMD Windows driver expects to own both functions; with audio left on `snd_hda_intel` the Windows driver init fails with Device Manager Code 43 even though the VGA function passes through cleanly.
 - **Host image:** `bazzite-nvidia-open` (open kernel module - works fine with a single Ampere card; nvidia-open's multi-GPU dmabuf issues only surface when *both* GPUs are NVIDIA).
 - **Host audio:** AMD HD Audio at `0f:00.4` - unaffected by any of this.
 
-While the VM runs, monitors connected to the secondary GPU go dark - libvirt hooks disable their KDE outputs before unbinding `amdgpu`. On VM shutdown the release hook does a PCI hot-remove + bus rescan to get the GPU back on `amdgpu` cleanly, but kwin on Wayland doesn't pick up the freshly-enumerated `/dev/dri/cardN` mid-session — **monitors stay dark until a logout/login** (or reboot). Acceptable price of admission for this hardware.
+While the VM runs, monitors connected to the secondary GPU go dark - libvirt hooks disable their KDE outputs before unbinding `amdgpu`. On VM shutdown the release hook unbinds both functions from `vfio-pci`, lets the kernel rebind `amdgpu` + `snd_hda_intel` via modalias, then fires a synthetic udev `change` event on the new `/dev/dri/cardN` to nudge kwin into attaching to it. **The AMD monitors come back automatically** — no logout/login required, no manual intervention.
 
-**Status:** two AMD-Navi VFIO kernel bugs on Linux 6.19.x are mitigated by a custom kernel livepatch bundle — see [github.com/barrettotte/vfio-navi-livepatch](https://github.com/barrettotte/vfio-navi-livepatch):
+**Status:** no kernel livepatch required. Earlier iterations needed a bundle of NULL-guard livepatches ([github.com/barrettotte/vfio-navi-livepatch](https://github.com/barrettotte/vfio-navi-livepatch)) to survive the release-side `vfio_pci_remove` chain — those bugs only triggered when the GPU was wedged from incomplete passthrough (audio function held by host while VGA went to VM). With both functions passed through together, the wedge preconditions don't occur and the release cycle is clean. Livepatch repo preserved in case a future kernel regression re-introduces the bugs.
 
-- **Fix 1:** NULL deref in `vfio_pci_core_sriov_configure` (+0x2b) during VM shutdown — see Hardware History entry 1.
-- **Fix 2:** NULL deref in `amdgpu_discovery_sysfs_fini` during amdgpu probe failure on rebind — separate bug exposed by RDNA3's `-EEXIST` reset/state issue.
+### The kwin hot-plug fix in the release hook
 
-The release hook (`10-gpu-return.sh`) has a safety gate at the top: it checks `/sys/kernel/livepatch/vfio_navi_livepatch/enabled` and refuses to run the unbind/remove if the livepatch is not active. If the livepatch is missing or disabled, the hook degrades to "leave GPU on vfio-pci" — host monitors stay dark until next reboot but the host stays alive. A forgotten livepatch install (e.g., after switching kernels before DKMS catches up) doesn't surprise-crash the host.
+KWin's hot-plug handler races udev's device-node creation. When amdgpu registers its new DRM device after `drivers_probe`, the kernel fires the udev `add` netlink event immediately — but `/dev/dri/cardN` isn't created until a subsequent udev rule pass runs. KWin catches the event in that race window, queries `device->devNode()`, gets an empty string, calls its internal `addGpu("")`. The `stat("")` inside kwin's `LogindSession::openRestricted` returns `ENOENT`. The retry loop in kwin's `addGpu` only retries on `EBusy`, so it gives up immediately. Journal shows the smoking gun: `"Failed to open drm device "` (trailing space, no path).
 
-Verify before starting a VM:
+The fix in the release hook is small: after `drivers_probe`, wait for the `/dev/dri/by-path/pci-...-card` symlink to materialize, `udevadm settle` to drain the queue, then fire a synthetic `udevadm trigger --action=change` on the now-fully-populated device. KWin's `change` handler (drm_backend.cpp ~lines 219-227) also calls `addGpu()` if no existing GPU is found — but this time the path is populated, `openRestricted` succeeds via logind's `TakeDevice`, the GPU attaches, outputs come up. KWin recognizes the monitors by EDID, so display priority/position are preserved across the cycle.
+
+Source kwin code references: [drm_backend.cpp](https://github.com/KDE/kwin/blob/master/src/backends/drm/drm_backend.cpp) (event handler + addGpu retry loop), [session_logind.cpp](https://github.com/KDE/kwin/blob/master/src/core/session_logind.cpp) (openRestricted / TakeDevice).
+
+### Fallback safeguard + recovery
+
+The release hook also force-edits `~/.config/kwinoutputconfig.json` to ensure AMD outputs are marked `enabled=true` after each cycle. Plasma 6 persists per-EDID output state in this file. The attach hook's `kscreen-doctor disable` (to free outputs for `amdgpu` unbind) gets autosaved by kscreend; if a cycle gets interrupted before the release's re-enable propagates (e.g. by a hard power-off), the *disabled* state could persist across the reboot → AMD monitors dark on next boot. The safeguard prevents this by directly writing the on-disk state.
+
+If the safeguard ever fails (e.g. kscreend autosaves over our edit before reboot) and you end up with AMD monitors dark on boot, recover from any working terminal (NVIDIA-side Konsole, SSH, or TTY):
 
 ```sh
-cat /sys/kernel/livepatch/vfio_navi_livepatch/enabled   # expect 1
+kscreen-doctor output.DP-1.enable output.DP-2.enable
 ```
 
-When the upstream kernel ships fixes for both code paths (Fix 1: NULL-check `pdev` in `vfio_pci_core_sriov_configure`; Fix 2: the missing `if (!ip_top) return;` guard, slated for Linux 6.20+), uninstall the livepatch and remove the safety-gate block from the release hook.
+If no graphical terminal is reachable, drop to TTY with `Ctrl+Alt+F3`, log in as your user, then run with the env explicitly:
+
+```sh
+XDG_RUNTIME_DIR=/run/user/$(id -u) \
+DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus \
+WAYLAND_DISPLAY=wayland-0 \
+kscreen-doctor output.DP-1.enable output.DP-2.enable
+```
+
+Then `Ctrl+Alt+F2` back to the wayland session.
 
 ## Hardware history (rejected configurations)
 
@@ -189,19 +205,21 @@ Click Finish. A new entry appears in the left hardware pane (e.g. `PCI 0000:07:0
 
 ### Patch the hostdev XML
 
-virt-manager's Add Hardware wizard doesn't expose `managed` or `<driver>`, so set those in the XML tab.
+virt-manager's Add Hardware wizard doesn't expose `managed`, `<driver>`, or `<rom bar>`, so set those in the XML tab.
 (Enable XML editing in virt-manager Preferences if you haven't - see section 1.)
 
-Click the new GPU entry (`PCI 0000:07:00.0`) and switch to the **XML** tab. Two edits:
+Click the new GPU entry (`PCI 0000:07:00.0`) and switch to the **XML** tab. Three edits:
 
 1. Change `managed='yes'` to `managed='no'` on the `<hostdev>` line.
 2. Add `<driver name='vfio'/>` as the first child of `<hostdev>`.
+3. Add `<rom bar='off'/>` immediately after the `<driver>` line. Suppresses option-ROM mapping — Windows AMD driver tends to behave better when QEMU doesn't try to expose the GPU's vBIOS to the guest, and it removes one source of guest-side Code 43.
 
 Click **Apply**. Final XML:
 
 ```xml
 <hostdev mode='subsystem' type='pci' managed='no'>
   <driver name='vfio'/>
+  <rom bar='off'/>
   <source>
     <address domain='0x0000' bus='0x07' slot='0x00' function='0x0'/>
   </source>
@@ -211,11 +229,35 @@ Click **Apply**. Final XML:
 
 The guest `bus`/`slot` values (here `0x09:0x00`) are whatever virt-manager auto-assigned — leave them alone in the common case. There's no `multifunction='on'` because nothing else shares that guest slot.
 
+### Hypervisor hide (Windows-side hygiene)
+
+Even on AMD (where Code 43 is less famous than NVIDIA's), the AMD driver in Windows is touchier about hypervisor presence on RDNA3 with passthrough. Two additions to the `<features>` block reduce the frequency of Code 43 + driver state corruption:
+
+```xml
+<features>
+  <acpi/>
+  <apic/>
+  <hyperv mode='custom'>
+    ... existing entries ...
+    <vendor_id state='on' value='1234567890ab'/>   <!-- add -->
+  </hyperv>
+  <kvm>                                            <!-- add block -->
+    <hidden state='on'/>
+  </kvm>
+  <vmport state='off'/>
+</features>
+```
+
+Edit via virt-manager **Overview** → **XML** tab, or directly with `sudo virsh -c qemu:///system edit win10`. Apply, then start the VM as normal.
+
+If Code 43 still recurs after this, the next step is uninstall the AMD driver via [DDU](https://www.guru3d.com/files-details/display-driver-uninstaller-download.html) in Windows Safe Mode + reinstall the AMD WHQL driver (not Preview/Optional builds) fresh. Most AMD-Code-43 cases trace to corrupted Windows-side driver state, not the host config.
+
 ### First boot with GPU
 
 Start the VM (the play button in virt-manager). The prepare/begin hook will:
 1. Disable the secondary GPU's KDE outputs.
-2. Unbind the host `amdgpu` driver and bind vfio-pci on `0000:07:00.0`. (The audio function `0000:07:00.1` is not touched — it stays on `snd_hda_intel` for the lifetime of the host.)
+2. PCI hot-remove + bus rescan the GPU. This forces a fresh `pci_dev` for amdgpu to re-probe so any leftover SMU/firmware state from a prior cycle gets cleared — defense in depth against the "SMU stuck" failure mode at next shutdown.
+3. Unbind the host `amdgpu` driver and bind vfio-pci on `0000:07:00.0`. (The audio function `0000:07:00.1` is not touched — it stays on `snd_hda_intel` for the lifetime of the host.)
 
 The monitors connected to the secondary GPU will go dark and stay dark until the guest GPU driver is installed - Windows has no driver for the passed-through card yet.
 Drive the VM through the **virt-manager SPICE window** in the meantime (software-rendered, fine for installing a driver).

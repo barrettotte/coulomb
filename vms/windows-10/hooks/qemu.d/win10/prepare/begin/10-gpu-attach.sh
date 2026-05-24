@@ -1,20 +1,34 @@
 #!/usr/bin/env bash
-# Hand the secondary GPU (PCI 0000:07:00.0) to the win10 VM. Disables the
-# GPU's outputs in KDE so the host driver releases the device, then binds
-# vfio-pci via direct sysfs ops.
+# Hand the secondary GPU (PCI 0000:07:00.0) AND its paired audio function
+# (0000:07:00.1) to the win10 VM. Disables the GPU's outputs in KDE so the
+# host driver releases the device, hot-removes + rescans both PCI functions
+# for clean pci_devs, then binds both to vfio-pci.
 #
-# The audio function (0000:07:00.1) is intentionally left on snd_hda_intel
-# - this host doesn't use HDMI/DP audio in Windows, and keeping audio off
-# the passthrough path sidesteps the snd_hda_intel rebind issue on release
-# (HDMI audio function goes to D3 and refuses to re-bind without a host
-# reboot). The GPU and audio function are in separate IOMMU groups
-# (26 and 27) so this split is allowed.
+# Audio function rationale: AMD GPU drivers (both inbox and Adrenalin) expect
+# to own BOTH functions of the multifunction GPU device. With the audio
+# function held by snd_hda_intel on the host, the Windows AMD driver init
+# fails with Device Manager Code 43 even though the VGA function passes
+# through cleanly. Validated empirically: Code 43 was less prevalent when
+# audio passthrough was previously enabled, more prevalent after we removed
+# it. The two functions are in separate IOMMU groups (26 and 27) so isolation
+# is fine; multifunction='on' in the guest hostdev tells Windows they're
+# paired. Trade-off: snd_hda_intel may not re-bind cleanly on release (HDMI
+# audio function may stay in D3) — acceptable since this host doesn't use
+# HDMI/DP audio.
 #
 # Why sysfs instead of `virsh nodedev-detach`: libvirt 12.0.0 (Fedora 44+)
 # has an RPC hang in the modular-daemon nodedev path that wedges virtqemud
 # for ~10 minutes on detach, leaves the device in a half-bound state, and
 # requires a host reboot to recover. Direct sysfs `driver_override` +
 # unbind + drivers_probe avoids the daemon roundtrip entirely.
+#
+# Why pre-start hot-remove + rescan (defense-in-depth): if a prior cycle's
+# release-side cleanup ran but didn't fully drain the GPU's SMU state, the
+# GPU can carry that weirdness into the next VM start. Doing a fresh
+# remove + rescan here forces a clean pci_dev for amdgpu to probe before
+# we hand the card to vfio-pci, reducing the "SMU stuck" failure mode at
+# next VM shutdown. Empirically the strongest predictor of release-side
+# reliability per the Navi VFIO community.
 #
 # Pairs with `<hostdev managed='no'>` in the VM XML - libvirt assumes the
 # device is already bound to vfio-pci by VM start, and never tries its own
@@ -23,6 +37,7 @@
 set -euo pipefail
 
 GPU_PCI="0000:07:00.0"
+GPU_AUDIO_PCI="0000:07:00.1"
 
 USER_NAME="barrett"
 USER_ID="$(id -u "$USER_NAME")"
@@ -92,6 +107,27 @@ else
   log "no connected outputs found on $GPU_PCI"
 fi
 
+# Defense-in-depth: hot-remove + rescan before vfio-pci bind. Forces a clean
+# pci_dev so any leftover SMU/firmware state from a prior cycle gets cleared.
+# Same caveat as the release hook: rescan may emit a TTM WARN that kills the
+# calling userspace process; wrap in subshell with `|| true` so we survive.
+# Remove both functions so the rescan re-enumerates the whole device fresh.
+log "pre-start hot-remove of $GPU_AUDIO_PCI"
+echo 1 > "/sys/bus/pci/devices/${GPU_AUDIO_PCI}/remove" 2>/dev/null || \
+  log "(audio function already absent, skipping)"
+log "pre-start hot-remove of $GPU_PCI (fresh pci_dev for clean cycle)"
+echo 1 > "/sys/bus/pci/devices/${GPU_PCI}/remove"
+log "pre-start PCI rescan"
+( echo 1 > /sys/bus/pci/rescan ) || true
+# Wait briefly for amdgpu/snd_hda_intel to re-claim via modalias before we steal them.
+for _ in $(seq 1 10); do
+  drv=$(basename "$(readlink -f "/sys/bus/pci/devices/${GPU_PCI}/driver" 2>/dev/null)" 2>/dev/null || true)
+  case "$drv" in amdgpu|nvidia) break ;; esac
+  sleep 1
+done
+log "post-rescan driver: ${drv:-unknown}"
+
 bind_to_vfio "$GPU_PCI"
+bind_to_vfio "$GPU_AUDIO_PCI"
 
 log "done"

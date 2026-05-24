@@ -1,38 +1,43 @@
 #!/usr/bin/env bash
-# Return the secondary GPU (PCI 0000:07:00.0) to the host's amdgpu driver
-# after the VM shuts down.
+# Return the secondary GPU (PCI 0000:07:00.0) AND its audio function
+# (0000:07:00.1) to their host drivers (amdgpu / snd_hda_intel) after the
+# VM shuts down.
 #
-# Uses PCI hot-remove + rescan instead of unbind + drivers_probe. The
-# straightforward `unbind from vfio-pci → echo > drivers_probe` path fails
-# on AMD RDNA3 because amdgpu leaks sysfs entries (e.g. mem_info_preempt_used)
-# on first unbind; the re-probe attempt collides with the leftover entries
-# and exits with -EEXIST. PCI remove tears the device down entirely and
-# rescan creates a fresh pci_dev with no leftover state, which amdgpu
-# probes cleanly.
+# Plain unbind + drivers_probe path (no PCI hot-remove). Empirically this
+# probes amdgpu cleanly on this setup — the previously-feared
+# mem_info_preempt_used sysfs leak (which forced PCI remove + rescan in an
+# earlier version of this hook) does not manifest with the audio function
+# also passed through (the wedged-GPU preconditions for that leak don't
+# arise on a clean release). This path is faster and avoids the rescan's
+# kernel-WARN-in-TTM-init quirk that took out the calling userspace
+# process via SIGSEGV.
 #
-# Trade-off: rescan creates a brand-new /dev/dri/cardN that kwin (on
-# Wayland) does not pick up mid-session. The GPU binds to amdgpu fine and
-# the host stays usable, but the monitors connected to the secondary GPU
-# stay dark until kwin restarts (logout/login). Documented in setup.md.
+# amdgpu's new instance gets a renumbered /dev/dri/cardN and renumbered DRM
+# connectors (DP-1 → DP-7, etc). KWin's hot-plug originally failed here:
+# kwin's udev "add" handler races udev's /dev/dri/cardN creation, queries
+# device->devNode() before it's populated, gets empty string → "Failed to
+# open drm device " (trailing space, empty filename) → gives up immediately
+# (the EBusy retry loop in kwin's addGpu doesn't help because stat("") fails
+# with ENOENT). The fix in this hook waits for /dev/dri/by-path/pci-*-card
+# to materialize, then fires a synthetic udev "change" event — kwin's change
+# handler also calls addGpu() with the now-populated devNode and succeeds.
 #
-# The audio function (0000:07:00.1) is not touched — it's left on
-# snd_hda_intel for the lifetime of the host. See 10-gpu-attach.sh.
+# Audio function: snd_hda_intel may not re-bind cleanly if the function
+# came back from the guest in D3 — non-fatal here (host doesn't use HDMI
+# audio), the audio rebind state is logged but the script continues.
 #
-# CRITICAL DEPENDENCY: this hook only runs if the vfio-navi-livepatch
-# bundle is active. The PCI remove path runs through vfio_pci_remove
-# which calls vfio_pci_core_sriov_configure on a possibly-stale pdev —
-# Fix 1 of the bundle NULL-checks that path. Without the livepatch the
-# remove would oops the kernel and require a hard host reboot. See:
-#   https://github.com/barrettotte/vfio-navi-livepatch
-#
-# If the livepatch is not active, the hook skips the remove and the GPU
-# stays on vfio-pci until next host reboot — same fallback behavior as
-# the earlier "neutered" version of this hook. Host monitors stay dark
-# but the host stays alive.
+# Historical note: an earlier version of this hook gated the remove behind
+# the vfio-navi-livepatch bundle (a set of NULL-guard livepatches on
+# vfio_pci_remove cleanup paths). With both GPU functions passed through
+# together, the wedged-state preconditions for those bugs don't manifest —
+# the cycle is clean without the livepatch. Gate removed; livepatch repo
+# preserved at github.com/barrettotte/vfio-navi-livepatch in case a future
+# kernel regression re-introduces the bugs.
 
 set -euo pipefail
 
 GPU_PCI="0000:07:00.0"
+GPU_AUDIO_PCI="0000:07:00.1"
 
 USER_NAME="barrett"
 USER_ID="$(id -u "$USER_NAME")"
@@ -51,40 +56,22 @@ if ! grep -qF "$xml_match"; then
   exit 0
 fi
 
-# Safety gate: do not touch the device unless the vfio-navi-livepatch bundle
-# is loaded and enabled. Without it, the PCI remove path oopses the kernel.
-LP_ENABLED="/sys/kernel/livepatch/vfio_navi_livepatch/enabled"
-if [ ! -f "$LP_ENABLED" ] || [ "$(cat "$LP_ENABLED" 2>/dev/null)" != "1" ]; then
-  log "WARNING: vfio-navi-livepatch not active - skipping GPU return"
-  log "GPU will stay on vfio-pci until next host reboot (monitors stay dark)"
-  log "install the livepatch from https://github.com/barrettotte/vfio-navi-livepatch"
-  exit 0
-fi
+log "unbind audio function $GPU_AUDIO_PCI from vfio-pci"
+echo "" > "/sys/bus/pci/devices/${GPU_AUDIO_PCI}/driver_override" 2>/dev/null || true
+echo "${GPU_AUDIO_PCI}" > /sys/bus/pci/drivers/vfio-pci/unbind 2>/dev/null || \
+  log "(audio unbind failed — may already be unbound)"
 
-# Capture the current connector set BEFORE remove+rescan. Post-rescan the
-# kernel may rename or re-number /dev/dri/cardN; this list lets us still
-# attempt kscreen-doctor enable with the pre-rescan connector names.
-mapfile -t connectors < <(
-  for conn in /sys/class/drm/card*-*; do
-    [ -d "$conn" ] || continue
-    pci=$(readlink "$conn/../device" 2>/dev/null | grep -oE '[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9]')
-    [ "$pci" = "$GPU_PCI" ] || continue
-    basename "$conn" | sed 's/^card[0-9]*-//'
-  done | sort -u
-)
-
-log "PCI hot-remove of $GPU_PCI (clears RDNA3 sysfs leftover state)"
+log "unbind VGA $GPU_PCI from vfio-pci"
 echo "" > "/sys/bus/pci/devices/${GPU_PCI}/driver_override"
-echo 1   > "/sys/bus/pci/devices/${GPU_PCI}/remove"
+echo "${GPU_PCI}" > /sys/bus/pci/drivers/vfio-pci/unbind
 
-# PCI rescan can emit a non-fatal kernel WARN in amdgpu's TTM init that
-# takes out the calling userspace process via SIGSEGV (preempt_count
-# imbalance). Run in a subshell with `|| true` so the parent script
-# survives even if the kernel signals us.
-log "PCI rescan"
-( echo 1 > /sys/bus/pci/rescan ) || true
+log "drivers_probe $GPU_PCI (let kernel pick amdgpu via modalias)"
+echo "${GPU_PCI}" > /sys/bus/pci/drivers_probe
 
-# Wait for amdgpu to claim the freshly-enumerated device.
+log "drivers_probe $GPU_AUDIO_PCI (let kernel pick snd_hda_intel via modalias)"
+echo "${GPU_AUDIO_PCI}" > /sys/bus/pci/drivers_probe || true
+
+# Wait for amdgpu to claim the VGA function.
 for _ in $(seq 1 10); do
   driver=$(basename "$(readlink -f "/sys/bus/pci/devices/${GPU_PCI}/driver" 2>/dev/null)" 2>/dev/null || true)
   case "$driver" in nvidia|amdgpu) break ;; esac
@@ -92,21 +79,130 @@ for _ in $(seq 1 10); do
 done
 log "GPU driver bound: ${driver:-unknown}"
 
-# Attempt to re-enable the secondary monitors. Note: KWin on Wayland
-# enumerates DRM devices at session start and does not pick up new cards
-# mid-session, so this call typically no-ops or fails after a rescan.
-# The user has to logout/login to recover the monitors. Tried anyway in
-# case kwin happens to pick them up (or in case kscreen-doctor has been
-# enhanced for hot-plug since this was written).
+audio_driver=$(basename "$(readlink -f "/sys/bus/pci/devices/${GPU_AUDIO_PCI}/driver" 2>/dev/null)" 2>/dev/null || true)
+log "audio driver bound: ${audio_driver:-unbound (host HDMI audio stays dark until reboot — acceptable)}"
+
+# kwin hot-plug fix: kwin's udev "add" event handler races with udev's
+# /dev/dri/cardN creation. When amdgpu registers the DRM device, the kernel
+# fires the netlink event immediately, but /dev/dri/cardN doesn't exist yet
+# (it's created by a later udev rule pass). kwin catches the add event,
+# queries device->devNode(), gets an empty string, calls addGpu("") →
+# stat("") fails → "Failed to open drm device " (trailing space). The retry
+# loop in kwin's addGpu only retries on EBusy, not ENOENT, so it gives up
+# immediately and the GPU stays unattached for the session.
+#
+# Fix: after amdgpu rebinds, wait for /dev/dri/by-path/pci-*-card symlink
+# to materialize, udevadm settle, then fire a synthetic "change" event on
+# the now-fully-populated device. kwin's change handler (drm_backend.cpp
+# lines 219-227) calls addGpu() with a populated devNode() if no existing
+# gpu is found — which succeeds because by now the /dev/dri/cardN file
+# actually exists.
+log "kwin hot-plug fix: wait for /dev/dri symlink + replay udev change event"
+by_path="/dev/dri/by-path/pci-${GPU_PCI}-card"
+for _ in $(seq 1 30); do
+  [ -e "$by_path" ] && break
+  sleep 0.1
+done
+if [ -e "$by_path" ]; then
+  udevadm settle --timeout=3
+  card_node=$(readlink -f "$by_path")
+  log "replaying udev change for $card_node (kwin will reopen with populated devNode)"
+  udevadm trigger --action=change "$card_node" || \
+    log "(udevadm trigger failed — kwin may not pick up GPU until logout)"
+  # Give kwin a moment to process the change event before kscreen-doctor.
+  sleep 1
+else
+  log "(timeout waiting for $by_path — udev rules slow or didn't run)"
+fi
+
+# Capture connector names AFTER amdgpu rebinds (post-rebind connector
+# numbers are stable for the new amdgpu instance — e.g. DP-7, DP-8 — and
+# differ from pre-cycle names since amdgpu allocates fresh connector IDs).
+mapfile -t connectors < <(
+  for conn in /sys/class/drm/card*-*; do
+    [ -d "$conn" ] || continue
+    pci=$(readlink "$conn/../device" 2>/dev/null | grep -oE '[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9]')
+    [ "$pci" = "$GPU_PCI" ] || continue
+    [ "$(cat "$conn/status" 2>/dev/null)" = "connected" ] || continue
+    basename "$conn" | sed 's/^card[0-9]*-//'
+  done | sort -u
+)
+
+# Best-effort kscreen-doctor enable. Currently a no-op in practice because
+# kwin's hot-plug fails to attach the new GPU (see header). Kept so that if
+# kwin ever fixes the issue, the monitors will recover automatically.
 if [ "${#connectors[@]}" -gt 0 ]; then
-  log "enabling KDE outputs (likely no-op until kwin restart): ${connectors[*]}"
+  log "attempting kscreen-doctor enable: ${connectors[*]} (expected no-op until kwin restart)"
   args=()
   for c in "${connectors[@]}"; do args+=("output.${c}.enable"); done
   sudo -u "$USER_NAME" \
     XDG_RUNTIME_DIR="$USER_RUNTIME" \
     DBUS_SESSION_BUS_ADDRESS="unix:path=${USER_RUNTIME}/bus" \
     WAYLAND_DISPLAY="wayland-0" \
-    kscreen-doctor "${args[@]}" || log "kscreen-doctor enable failed (expected after rescan — logout/login to restore monitors)"
+    kscreen-doctor "${args[@]}" 2>&1 | sed "s/^/[$LOG_TAG] kscreen-doctor: /" || true
 fi
+
+# Safeguard: directly force-enable AMD outputs in kwin's persisted output
+# config. The attach hook's kscreen-doctor disable gets autosaved by kscreend
+# to ~/.config/kwinoutputconfig.json; if the user reboots or hard-power-offs
+# without kwin processing the post-release re-enable (e.g. logout itself hung
+# because of the kwin hot-plug bug), the disabled state persists across boot
+# → AMD monitors come up dark → potential recovery loop where each
+# hard-power-off compounds the problem. This direct edit ensures the on-disk
+# state is correct regardless of whether kwin's in-session enable succeeded.
+log "safeguard: force-enable AMD outputs in kwinoutputconfig.json"
+sudo -u "$USER_NAME" python3 - "${connectors[@]:-}" <<'PYEOF' 2>&1 | sed "s/^/[$LOG_TAG] kscreen-config: /"
+import json, os, sys, tempfile
+
+config_path = os.path.expanduser('~/.config/kwinoutputconfig.json')
+if not os.path.exists(config_path):
+    print('no kwinoutputconfig.json — nothing to do')
+    sys.exit(0)
+
+# Target AMD GPU's connectors. Connector names get renumbered across amdgpu
+# rebinds (DP-1 → DP-7 etc), but kwin stores by EDID, so the original DP-1/2
+# entries in the config persist regardless of the current kernel-side names.
+# Hardcoded for this hardware; update if monitor wiring changes.
+amd_connectors = {'DP-1', 'DP-2', 'DP-3', 'HDMI-A-1'}
+
+with open(config_path) as f:
+    data = json.load(f)
+
+# Two top-level configs: "outputs" (per-output details with connectorName)
+# and "setups" (multi-monitor topologies with enabled/position state).
+amd_indices = set()
+for cfg in data:
+    if cfg.get('name') == 'outputs':
+        for i, output in enumerate(cfg.get('data', [])):
+            if output.get('connectorName') in amd_connectors:
+                amd_indices.add(i)
+
+if not amd_indices:
+    print(f'no AMD outputs in config (none matching {amd_connectors})')
+    sys.exit(0)
+
+modified = 0
+for cfg in data:
+    if cfg.get('name') == 'setups':
+        for setup in cfg.get('data', []):
+            for output_ref in setup.get('outputs', []):
+                if output_ref.get('outputIndex') in amd_indices:
+                    if not output_ref.get('enabled', True):
+                        output_ref['enabled'] = True
+                        modified += 1
+
+if modified == 0:
+    print(f'AMD outputs already enabled in all setups (no edit needed)')
+    sys.exit(0)
+
+# Atomic write — temp file in same dir, rename.
+dir_ = os.path.dirname(config_path)
+with tempfile.NamedTemporaryFile('w', dir=dir_, delete=False) as tf:
+    json.dump(data, tf, indent=4)
+    tmp = tf.name
+os.chmod(tmp, 0o644)
+os.rename(tmp, config_path)
+print(f'force-enabled {modified} AMD output reference(s) in {config_path}')
+PYEOF
 
 log "done"

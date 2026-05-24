@@ -307,16 +307,27 @@
       changed_when: "'Staging' in kvm_kargs.stdout"
 
     # AMD RDNA3 (Navi 33 RX 7600 here) doesn't fully reset when vfio-pci
-    # releases the device, which breaks amdgpu's re-probe path with an
-    # -EEXIST on stale sysfs entries (mem_info_preempt_used etc.). runpm=0
-    # prevents D3cold transitions that confuse re-probe; reset_method=3
-    # (mode2) is the soft reset RDNA3 actually implements cleanly. These
-    # reduce the upstream state corruption that exposes the leak; the
-    # vfio-navi-livepatch bundle handles the kernel NULL-derefs that
-    # would otherwise oops the host on VM shutdown / rebind:
+    # releases the device — amdgpu re-probe runs into stale sysfs entries
+    # (mem_info_preempt_used -EEXIST) and the GPU's SMU often refuses
+    # mode1 reset after Windows shutdowns ("I'm not done with your
+    # previous command", SMN_C2PMSG_66=0x2F). The kernel-args triad
+    # community-recommended for stable RDNA3 + VFIO:
+    #   runpm=0          - avoid D3cold transitions that wedge re-probe
+    #                       (also prevents "device inaccessible" on poweroff)
+    #   gpu_recovery=1   - explicit (kernel default is 1 too, but be safe)
+    #   gfx_off=0        - disable GFX power gating that interacts with SMU
+    # `reset_method` is intentionally not set: init-time asic reset uses
+    # ASIC defaults regardless of the module param (per amd-gfx Apr 2023
+    # patch series), so setting it is a no-op for our re-probe failure.
+    # The vfio-navi-livepatch bundle handles the residual kernel NULL-derefs:
     #   https://github.com/barrettotte/vfio-navi-livepatch
     - name: Set amdgpu kernel args for VFIO passthrough rebind (RDNA3 workaround)
-      ansible.builtin.command: rpm-ostree kargs --append-if-missing="amdgpu.runpm=0" --append-if-missing="amdgpu.reset_method=3"
+      ansible.builtin.command: >-
+        rpm-ostree kargs
+        --delete-if-present="amdgpu.reset_method=3"
+        --append-if-missing="amdgpu.runpm=0"
+        --append-if-missing="amdgpu.gpu_recovery=1"
+        --append-if-missing="amdgpu.gfx_off=0"
       register: amdgpu_kargs
       changed_when: "'Staging' in amdgpu_kargs.stdout"
 
