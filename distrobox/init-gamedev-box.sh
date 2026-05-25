@@ -65,8 +65,6 @@ mv /tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 "$HOME/.local/bin/godo
 chmod +x "$HOME/.local/bin/godot"
 rm -rf /tmp/godot /tmp/godot.zip
 
-pin_nvidia_gpu
-
 setup_zsh
 setup_symlinks
 init_end

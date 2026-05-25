@@ -16,6 +16,8 @@ While the VM runs, monitors connected to the secondary GPU go dark - libvirt hoo
 
 **Status:** working end-to-end with no kernel patches. The previously-feared `vfio_pci_remove` NULL-deref cleanup chain only fires when the GPU is wedged from incomplete passthrough (audio function held by host while VGA goes to VM); passing both functions through together avoids the wedge preconditions, so the release cycle is clean on stock kernels.
 
+A separate `vfio_pci_core_runtime_resume` `down_write` oops still happens after ~10 successful start/stop cycles per host boot — see [Known limitations](#known-limitations) for the cycle cap and other operational quirks discovered after this setup was declared working.
+
 ### The KWin hot-plug recovery (two pieces)
 
 After VFIO release, `amdgpu` gets a new `/dev/dri/cardN` minor (e.g. `card1 → card3`) and renumbered DRM connectors (e.g. `DP-1 → DP-7`). Getting KWin to re-attach the GPU and re-enable its outputs needs two pieces working together:
@@ -319,8 +321,8 @@ VM must be shut down first (XML changes don't apply to a running domain).
 
 ```xml
 <input type='evdev'>
-  <source dev='/dev/input/by-id/usb-Logitech_USB_Receiver-if01-event-kbd'
-          grab='all' grabToggle='ctrl-ctrl' repeat='on'/>
+  <source dev='/dev/input/by-id/usb-Corsair_CORSAIR_K70_RGB_PRO_..._-event-kbd'
+          grab='all' repeat='on' grabToggle='scrolllock'/>
 </input>
 <input type='evdev'>
   <source dev='/dev/input/by-id/usb-Logitech_USB_Receiver-if02-event-mouse'/>
@@ -331,33 +333,72 @@ Substitute your actual device paths. Notable attributes:
 
 - `grab='all'` (keyboard only) - captures all key events including the hotkey
   itself. Required for the toggle to work.
-- `grabToggle='ctrl-ctrl'` - hotkey is both Ctrl keys pressed simultaneously.
-  Other valid values: `alt-alt`, `shift-shift`, `meta-meta`, `scrolllock`,
+- `grabToggle='scrolllock'` - **use `scrolllock`, not `ctrl-ctrl`**. The K70
+  RGB PRO (and other gaming keyboards with custom firmware) can send the two
+  Ctrls with slight timing offsets that qemu's "both simultaneous" detector
+  doesn't accept reliably - this manifests as a stuck grab that the toggle
+  won't release. Scroll Lock is a single dedicated key, can't fail.
+  Other valid values: `alt-alt`, `shift-shift`, `meta-meta`, `ctrl-ctrl`,
   `ctrl-scrolllock`.
 - `repeat='on'` - passes key-repeat events to the guest. Without this, holding
   a key in the VM registers only one press.
 
 The mouse entry needs no `grab` - it follows the keyboard's grab state.
 
-### Permissions
+### Permissions: cgroup_device_acl in qemu.conf
 
-libvirt's `qemu` user needs read access to `/dev/input/event*`. On Fedora this
-is typically the `input` group. If the VM fails to start with "Permission
-denied" on the event node:
+libvirt's qemu user needs to open `/dev/input/event*`. On Bazzite / Fedora
+Atomic, the `input` group is defined in `sysusers.d` (not `/etc/group`), so
+`sudo usermod -aG input qemu` silently no-ops - that approach does NOT work.
 
-```sh
-sudo usermod -aG input qemu
-sudo systemctl restart virtqemud.service
+The correct approach is `cgroup_device_acl` in `/etc/libvirt/qemu.conf` -
+grants per-VM access without group membership. The host-setup.yml playbook
+manages this via `blockinfile` (look for `BEGIN ANSIBLE MANAGED: evdev
+cgroup_device_acl`). Resulting config:
+
 ```
+cgroup_device_acl = [
+    "/dev/null", "/dev/full", "/dev/zero",
+    "/dev/random", "/dev/urandom",
+    "/dev/ptmx", "/dev/kvm",
+    "/dev/rtc", "/dev/hpet",
+    "/dev/vfio/vfio",
+    "/dev/userfaultfd",
+    "/dev/input/by-id/usb-Corsair_..._-event-kbd",
+    "/dev/input/by-id/usb-Logitech_USB_Receiver-if02-event-mouse"
+]
+```
+
+**CRITICAL:** when `cgroup_device_acl` is set, the *defaults must be
+re-listed explicitly* or KVM VMs lose access to `/dev/kvm` and
+`/dev/vfio/vfio` and refuse to start. Don't omit any of the defaults above.
+
+Restart virtqemud after editing: `sudo systemctl restart virtqemud`.
 
 ### Usage
 
 - Start the VM. Initially the host owns keyboard and mouse.
-- Press **both Ctrl keys at the same time** → input flows into the VM.
-- Press **both Ctrl keys** again → input returns to the host.
+- Press **Scroll Lock** → input flows into the VM (cursor appears on AMD
+  monitors via the Windows AMD driver).
+- Press **Scroll Lock** again → input returns to the host.
 - The hotkey is keyboard-only; mouse follows automatically.
 - Status is silent - no on-screen indicator. You'll know which side has it by
-  where typing/clicking goes.
+  where typing/clicking goes (and where the cursor visually is).
+
+### Recovery if grab gets stuck (NO ssh on this host by policy)
+
+If Scroll Lock somehow fails to release the grab and the host appears frozen
+(it's not actually frozen - just has no input):
+
+1. **Physically unplug your keyboard and mouse USB cables.** The kernel sees
+   the disconnect, qemu's evdev file descriptors close, the grab releases,
+   and the VM keeps running (just temporarily without input). Plug them back
+   in and Linux re-detects automatically.
+
+2. As a last resort, hard power-off the host. This was the recovery in
+   earlier attempts and is what we want to avoid - hence option 1 first.
+
+DO NOT enable `sshd` "just in case" - this host's policy is no SSH daemon.
 
 ### Gotchas
 
@@ -440,6 +481,81 @@ interrupt threads on the *other* CCD so they don't fight the guest for cache.
 
 If you upgrade the CPU: drop the `<cputune>` block until you've redone this on
 the new chip.
+
+## Known limitations
+
+Things that are confirmed-broken or sub-optimal in the current setup. None block daily use; document so future-you doesn't spend a session re-discovering each. Listed in order of how likely you are to notice.
+
+### Brave force-closes on VM start
+
+When the attach hook unbinds `amdgpu` for VM passthrough, Brave (flatpak) exits immediately — losing open tabs and any unsaved state.
+
+**Root cause:** Chromium's GPU process opens every `/dev/dri/renderDN` node at startup for GPU enumeration (vendor IDs, extensions, capabilities), regardless of `DRI_PRIME`, `__GLX_VENDOR_LIBRARY_NAME`, `MESA_VK_DEVICE_SELECT`, `--render-node-override`, or `--gpu-active-vendor-id`. Those env vars and flags pin *rendering* to NVIDIA, but Brave still holds an open fd on AMD's `renderD130` for enumeration. When the hook hot-removes the AMD GPU, the open fd errors out → GPU process crashes → browser dies. Verified 2026-05-24 via `/proc/PID/fd` inspection.
+
+The `dotfiles/flatpak/overrides/com.brave.Browser` env vars are kept for steady-state rendering pinning (NVIDIA only when both GPUs are present) but they explicitly do NOT prevent this crash. Brave's own header comment was updated to say so.
+
+**Workarounds (not implemented; pick one if it bothers you):**
+
+- **`--disable-gpu`** added to `dotfiles/flatpak/config/com.brave.Browser/brave-flags.conf` — software rendering everywhere; noticeable on heavy pages but Brave survives. Documented "standard fix" from the Chromium/VFIO community.
+- **FLATPAK_BWRAP wrapper** — write a custom bwrap wrapper that filters `/dev/dri` to NVIDIA-only inside the flatpak sandbox, set via the `FLATPAK_BWRAP` env var on Brave's `.desktop` launch. Preserves GPU accel; ~1-2hr of fiddly bwrap-arg-juggling and edge-case debugging.
+- **Auto-quit before VM start** — modify the attach hook to send SIGTERM to Brave (and reopen it after release). Preserves GPU accel; clunky workflow.
+
+**Daily reality:** just re-launch Brave after VM session. It restores the previous tabs via Brave's "continue where you left off" behavior.
+
+### VS Code in dev-box freezes on VM start
+
+Same root cause as Brave — VS Code is Electron-based, so Electron = Chromium underneath. Same `/dev/dri/renderDN` enumeration → same crash. VS Code freezes hard and must be terminated via process manager.
+
+`dotfiles/distrobox/profile.d/coulomb-gpu-pin.sh` (installed into every container's `/etc/profile.d/` via the `container_init_hook` in `dotfiles/distrobox/distrobox.conf`) exports the same NVIDIA-pinning env vars — same caveat: it pins rendering, doesn't prevent the crash.
+
+**Workarounds (same as Brave):** `--disable-gpu` flag added to the distrobox-exported `dev-box-code.desktop` Exec lines, or sandbox filtering (harder for distrobox than for flatpak), or auto-quit in the attach hook. None implemented.
+
+**Daily reality:** save your VS Code state before launching the VM, kill VS Code afterward, re-open.
+
+### ~10-cycle limit per host boot before kernel oops
+
+The setup is multi-cycle-stable for the first ~10 VM start/stop cycles per host boot. On approximately the 11th cycle, the kernel oopses on VM start with:
+
+```
+RIP: down_write+0x20/0x60
+ vfio_pci_core_runtime_resume+0x1e/0xa0 [vfio_pci_core]
+ vfio_pci_core_enable+0x47/0x350 [vfio_pci_core]
+ vfio_pci_open_device+0x20/0x80 [vfio_pci]
+ vfio_df_open+0x8a/0x160 [vfio]
+ vfio_group_ioctl_get_device_fd+0x11c/0x270 [vfio]
+```
+
+**Symptoms:** VM transitions to `paused` state mid-startup; `qemu-system-x86_64` becomes a defunct zombie; `sudo virsh destroy win10` hangs because libvirt is stuck on the kernel-tainted vfio path. Recovery requires a hard reboot (`sudo systemctl reboot` or sysrq REISUB).
+
+**Root cause:** amdgpu's BO accounting leaks on each release cycle (visible as `amdgpu: leaking bo va (-19)` in dmesg every cycle). The PCI rescan in the attach hook gives a fresh `pci_dev` but doesn't reset amdgpu's residual BO state. After many cycles, a stale rwsem reference in `vfio_pci_core` trips on the next `vfio_pci_open_device`.
+
+**Workarounds (none implemented; daily reboot avoids hitting this):**
+
+- **`vendor-reset` kernel module** (github.com/gnif/vendor-reset) — passive DKMS module that intercepts the PCI reset path and applies the AMD-proper sequence (BACO/BU/FLR). Most plausible long-term fix; Navi 33 support is newer/experimental. ~30 min trial cost.
+- **Surgical livepatch of `vfio_pci_core_runtime_resume`** — NULL-guard the specific function that oopses. Same risks as previous livepatch attempts (may expose next-in-line bug).
+- **Wait for upstream amdgpu fix** — the BO leak is a real upstream bug; Bazzite kernel updates may eventually include the fix.
+
+**Daily reality:** if you reboot at least every 1-2 days you'll never hit this. The cycle counter on `scripts/win10-vm-launch` could warn at 8 cycles (not implemented).
+
+### VM boot screens go to SPICE not physical monitors
+
+OVMF firmware logo, Windows boot logo, and Windows pre-login UI are rendered on the emulated QXL display (visible in the virt-manager SPICE window). The physical monitors connected to the passthrough GPU stay dark until Windows loads the AMD driver at the login screen.
+
+**Why:** libvirt requires exactly one primary `<video>` device; with QXL present and primary, OVMF outputs to QXL during firmware/boot. Attempts to fix on 2026-05-24:
+
+1. `<video><model type='none'/></video>` (kept SPICE) — monitors stayed dark
+2. Removed both QXL and SPICE, added `<rom bar='on'/>` to the GPU hostdev — monitors stayed dark
+3. Removed both QXL and SPICE, dumped VBIOS from `/sys/bus/pci/devices/0000:07:00.0/rom` to `/var/lib/libvirt/images/win10-vbios.rom` (file kept in place), added `<rom file='...'/>` to hostdev — monitors stayed dark
+
+Per [passthroughpo.st "shadow VBIOS" article](https://passthroughpo.st/explaining-csm-efifboff-setting-boot-gpu-manually/), the sysfs ROM dump is almost certainly the "shadow copy" — the in-memory VBIOS modified by host UEFI + amdgpu during boot. OVMF's GOP driver expects a pristine VBIOS and fails silently when it gets the shadow → no display output, no fallback (since QXL/SPICE are removed).
+
+**Workaround candidates (not implemented; in order of least-effort):**
+
+1. **Clean VBIOS from TechPowerUp's database** — look up the exact RX 7600 model, download the manufacturer-shipped VBIOS, swap into `/var/lib/libvirt/images/win10-vbios.rom`. The XML for option 3 above is already documented; just file-swap.
+2. **`video=efifb:off` kernel karg** (via `rpm-ostree kargs --append=video=efifb:off`) — prevents host EFI framebuffer from touching the AMD GPU; redump from sysfs may produce a cleaner ROM. Requires reboot.
+3. **Set NVIDIA RTX 3090 Ti as explicit primary in host motherboard BIOS** — AMD GPU is never host-initialized so never gets a shadow VBIOS at all. Most invasive (manual BIOS work) but most reliable.
+
+**Daily reality:** the SPICE window shows boot progress; the physical monitors light up at the login screen. Accepted as the standard VFIO Win10 experience.
 
 ## Reference
 

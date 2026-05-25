@@ -105,9 +105,10 @@ mapfile -t connectors < <(
   done | sort -u
 )
 
-# Best-effort kscreen-doctor enable. Currently a no-op in practice because
-# kwin's hot-plug fails to attach the new GPU (see header). Kept so that if
-# kwin ever fixes the issue, the monitors will recover automatically.
+# kscreen-doctor enable on the post-rebind connector names. With KWIN_DRM_DEVICES
+# in place (see header), KWin does attach the new GPU and this call DOES recover
+# the AMD outputs in-session. May silently fail if connector enumeration is racing
+# the addGpu — the kwinoutputconfig.json safeguard below catches that case.
 if [ "${#connectors[@]}" -gt 0 ]; then
   log "attempting kscreen-doctor enable: ${connectors[*]} (expected no-op until kwin restart)"
   args=()

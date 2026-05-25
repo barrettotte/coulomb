@@ -1,12 +1,19 @@
 [Context]
 filesystems=/home/barrett/repos/coulomb/dotfiles:ro;
 
-# Pin GPU rendering to the NVIDIA RTX 3090 Ti (PCI 0000:0d:00.0).
-# The host has a secondary AMD Radeon RX 7600 (PCI 0000:07:00.0) that gets
-# passed through to the Win10 VM via vfio-pci. Apps holding DRI/Vulkan
-# handles on amdgpu when the hooks unbind it for the VM crash hard (Brave
-# exits, VS Code freezes). Pinning rendering to the 3090 Ti keeps the
-# browser unaffected regardless of VM state.
+# Pin Brave's steady-state rendering to the NVIDIA RTX 3090 Ti (PCI
+# 0000:0d:00.0). Keeps GPU/power profile consistent and avoids cross-GPU
+# PRIME hops when both GPUs are present.
+#
+# NOTE: these env vars do NOT prevent Brave from crashing when the AMD
+# Radeon RX 7600 (PCI 0000:07:00.0) is unbound for the Win10 VM. Chromium
+# opens every /dev/dri/renderDN for GPU enumeration regardless of these
+# pins — the open fd to AMD's renderD130 errors out when the device
+# disappears, killing the GPU process. Verified 2026-05-24 via /proc/PID/fd
+# inspection (brave's GPU process held both renderD129 NVIDIA and renderD130
+# AMD even with --render-node-override pointed at NVIDIA). Live with the
+# crash, or use --disable-gpu / a sandbox-filtering wrapper. See memory:
+# project_vfio_multicycle_limit_without_livepatch.md for context.
 [Environment]
 DRI_PRIME=pci-0000_0d_00_0
 __GLX_VENDOR_LIBRARY_NAME=nvidia

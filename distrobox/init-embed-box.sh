@@ -90,8 +90,6 @@ pip3 install \
     platformio \
     esptool
 
-pin_nvidia_gpu
-
 setup_zsh
 setup_symlinks
 init_end

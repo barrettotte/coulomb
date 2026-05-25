@@ -145,8 +145,6 @@ sudo sed -i 's/^Categories=.*/Categories=Development;Network;Security;/' /usr/sh
 sudo sed -i 's/^Categories=.*/Categories=Network;Monitor;/' /usr/share/applications/org.wireshark.Wireshark.desktop
 sudo sed -i 's|^Exec=.*|Exec=wireshark %f|' /usr/share/applications/org.wireshark.Wireshark.desktop
 
-pin_nvidia_gpu
-
 setup_zsh
 setup_symlinks
 init_end

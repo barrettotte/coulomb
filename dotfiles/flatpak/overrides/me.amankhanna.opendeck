@@ -1,0 +1,7 @@
+[Context]
+# OpenDeck has zero filesystem access by default — needs explicit RW to the
+# dotfiles dir so its Default.json (symlinked from there) is readable AND
+# writable from inside the sandbox. RW because OpenDeck does atomic
+# write-then-rename when buttons are reconfigured in the UI, so it needs
+# to be able to mutate the file at the symlink target.
+filesystems=/home/barrett/repos/coulomb/dotfiles:rw;

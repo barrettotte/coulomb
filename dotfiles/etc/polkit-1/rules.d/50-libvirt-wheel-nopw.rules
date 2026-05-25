@@ -1,0 +1,18 @@
+// Allow members of the 'wheel' group to manage libvirt VMs without
+// a password prompt. Covers both the legacy unix.manage action and the
+// per-API actions used by newer libvirt clients.
+//
+// Why: the win10 VM is launched from a Stream Deck button via
+// scripts/win10-vm-launch — that script calls `virsh start` and must
+// run unattended (no GUI auth dialog). The user is in 'wheel', so the
+// rule grants access by group membership.
+//
+// Scope: any user in 'wheel' can start/stop/manage any system-scope VM.
+// Appropriate for a single-user workstation; tighten for multi-user.
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.libvirt.unix.manage" ||
+         action.id.indexOf("org.libvirt.api.") == 0) &&
+        subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});

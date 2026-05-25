@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# win10-vm-launch — start the win10 VM if it's not already running.
+# Idempotent: safe to invoke from a Stream Deck button repeatedly.
+# Started state passes through cleanly without changing anything.
+#
+# Optionally opens virt-viewer for the QXL/SPICE console as a sanity surface
+# while the AMD monitors come up with the passed-through GPU. Comment out
+# the virt-viewer line if you only want the silent start.
+
+set -euo pipefail
+
+VM_NAME="win10"
+
+state=$(virsh -c qemu:///system domstate "$VM_NAME" 2>/dev/null || echo unknown)
+
+case "$state" in
+    running)
+        notify-send -a "VM Launcher" "${VM_NAME} already running" -i computer 2>/dev/null || true
+        ;;
+    "shut off"|"crashed"|unknown)
+        if virsh -c qemu:///system start "$VM_NAME" >/dev/null; then
+            notify-send -a "VM Launcher" "Starting ${VM_NAME}…" -i computer 2>/dev/null || true
+        else
+            notify-send -a "VM Launcher" "Failed to start ${VM_NAME}" \
+                        -i computer-fail -u critical 2>/dev/null || true
+            exit 1
+        fi
+        ;;
+    paused)
+        virsh -c qemu:///system resume "$VM_NAME" >/dev/null
+        notify-send -a "VM Launcher" "Resumed ${VM_NAME}" -i computer 2>/dev/null || true
+        ;;
+    *)
+        notify-send -a "VM Launcher" "${VM_NAME} in unexpected state: ${state}" \
+                    -i computer-fail -u critical 2>/dev/null || true
+        exit 1
+        ;;
+esac

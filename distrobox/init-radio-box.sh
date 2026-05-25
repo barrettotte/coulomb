@@ -104,8 +104,6 @@ EOF
 # fix SDR++ categories (HamRadio alone goes to lost+found in KDE)
 sudo sed -i 's/Categories=HamRadio/Categories=Network;HamRadio;/' /usr/share/applications/sdrpp.desktop
 
-pin_nvidia_gpu
-
 setup_zsh
 setup_symlinks
 init_end

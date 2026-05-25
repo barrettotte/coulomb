@@ -205,8 +205,12 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/overrides/com.discordapp.Discord"
         - src: "{{ dotfiles_dir }}/flatpak/overrides/com.brave.Browser"
           dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/overrides/com.brave.Browser"
+        - src: "{{ dotfiles_dir }}/flatpak/overrides/me.amankhanna.opendeck"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/flatpak/overrides/me.amankhanna.opendeck"
         - src: "{{ dotfiles_dir }}/flatpak/config/com.brave.Browser/brave-flags.conf"
           dest: "{{ ansible_facts['env']['HOME'] }}/.var/app/com.brave.Browser/config/brave-flags.conf"
+        - src: "{{ dotfiles_dir }}/flatpak/config/me.amankhanna.opendeck/opendeck/profiles/sd-A00SA4242N41UT"
+          dest: "{{ ansible_facts['env']['HOME'] }}/.var/app/me.amankhanna.opendeck/config/opendeck/profiles/sd-A00SA4242N41UT"
         - src: "{{ dotfiles_dir }}/systemd/user/plasma-kwin_wayland.service.d"
           dest: "{{ ansible_facts['env']['HOME'] }}/.config/systemd/user/plasma-kwin_wayland.service.d"
         - src: "{{ dotfiles_dir }}/systemd/user/discord-graceful-quit.service"
@@ -329,6 +333,32 @@
       register: amdgpu_kargs
       changed_when: "'Staging' in amdgpu_kargs.stdout"
 
+    # evdev passthrough cgroup ACL: lets <input type='evdev'> in the win10
+    # XML actually work. Without these entries, qemu can't open
+    # /dev/input/event* (Bazzite stores 'input' group in sysusers not /etc/group,
+    # so usermod -aG input qemu silently no-ops). cgroup_device_acl is the
+    # libvirt-idiomatic way to grant per-VM access without group membership.
+    #
+    # CRITICAL: when cgroup_device_acl is set, the *defaults* must be repeated
+    # explicitly or KVM VMs lose access to /dev/kvm, /dev/vfio/vfio, etc.
+    - name: Configure libvirt qemu.conf cgroup_device_acl for evdev passthrough
+      ansible.builtin.blockinfile:
+        path: /etc/libvirt/qemu.conf
+        marker: "# {mark} ANSIBLE MANAGED: evdev cgroup_device_acl"
+        block: |
+          cgroup_device_acl = [
+              "/dev/null", "/dev/full", "/dev/zero",
+              "/dev/random", "/dev/urandom",
+              "/dev/ptmx", "/dev/kvm",
+              "/dev/rtc", "/dev/hpet",
+              "/dev/vfio/vfio",
+              "/dev/userfaultfd",
+              "/dev/input/by-id/usb-Corsair_CORSAIR_K70_RGB_PRO_Mechanical_Gaming_Keyboard_A0EC1DCAC15A0057A03183B73A2C6F04-event-kbd",
+              "/dev/input/by-id/usb-Logitech_USB_Receiver-if02-event-mouse"
+          ]
+      become: true
+      register: qemu_conf_cgroup
+
     - name: Create swtpm directory
       ansible.builtin.file:
         path: /var/lib/swtpm-localca
@@ -355,6 +385,32 @@
       ansible.builtin.command: setfacl -m u:qemu:rx {{ ansible_facts['env']['HOME'] }}
       become: true
       when: "'user:qemu:r-x' not in home_acl.stdout"
+
+    # Polkit rule: allow 'wheel' members to manage libvirt VMs without a
+    # password prompt. Required for scripts/win10-vm-launch (Stream Deck
+    # button) which calls `virsh start` and must run unattended.
+    #
+    # MUST use copy, not symlink. polkitd runs in an SELinux-confined
+    # domain that can only read files labeled etc_t (or similar) under
+    # /etc/. Symlinking to a file under /var/home/.../dotfiles/ leaves
+    # the target labeled unlabeled_t and polkitd silently logs "Error
+    # loading script" - the rule never takes effect. Direct copy +
+    # restorecon ensures the right context.
+    - name: Install polkit rule for passwordless libvirt access
+      ansible.builtin.copy:
+        src: "{{ dotfiles_dir }}/etc/polkit-1/rules.d/50-libvirt-wheel-nopw.rules"
+        dest: /etc/polkit-1/rules.d/50-libvirt-wheel-nopw.rules
+        mode: "0644"
+        owner: root
+        group: root
+        remote_src: true
+      become: true
+      register: polkit_libvirt_rule
+
+    - name: Restore SELinux context on polkit rule
+      ansible.builtin.command: restorecon /etc/polkit-1/rules.d/50-libvirt-wheel-nopw.rules
+      become: true
+      when: polkit_libvirt_rule.changed
 
     # libvirt qemu hooks: per-VM dispatcher + win10 GPU passthrough scripts.
     # Owned by this playbook rather than the standalone hooks/install.sh so
@@ -398,14 +454,14 @@
       become: true
       register: win10_hooks
 
-    - name: Restart virtqemud when hooks change
+    - name: Restart virtqemud when hooks or qemu.conf change
       ansible.builtin.systemd:
         name: virtqemud.service
         state: restarted
       become: true
       when:
         - virtqemud_unit.stat.exists
-        - qemu_hook.changed or win10_hooks.changed
+        - qemu_hook.changed or win10_hooks.changed or qemu_conf_cgroup.changed
 
     - name: Enable and start podman socket (user)
       ansible.builtin.systemd:

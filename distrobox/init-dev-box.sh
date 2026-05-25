@@ -84,8 +84,6 @@ sudo pacman -S --noconfirm --needed \
 # CUDA - use injected driver, but install toolkit
 sudo pacman -Syu --noconfirm cuda --assume-installed opencl-nvidia
 
-pin_nvidia_gpu
-
 # rust
 echo "Installing Rust..."
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
