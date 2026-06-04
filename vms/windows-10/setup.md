@@ -412,75 +412,33 @@ DO NOT enable `sshd` "just in case" - this host's policy is no SSH daemon.
 
 ## 5. Shared directory (virtiofs) - optional
 
-Share a host directory with the VM. WinFsp is already installed by
-`provision.ps1`.
+Share `~/storage/code/vms/share` with the VM as a drive letter. WinFsp is already installed by `provision.ps1`.
 
-### Host side (virt-manager)
+### Host side
 
-1. Shut down the VM.
-2. In virt-manager, open VM hardware details.
-3. **Memory** > Enable shared memory (required for virtiofs).
-4. **Add Hardware** > **Filesystem**:
-   - Driver: `virtiofs`
-   - Source path: `/var/home/barrett/storage/code/repos/coulomb/vms/windows-10`
-   - Target path: `share`
-5. Boot the VM.
+- `<memoryBacking><source type='memfd'/><access mode='shared'/></memoryBacking>` on the domain (set during initial creation) — required for virtiofs.
+- `<filesystem type='mount' accessmode='passthrough'><driver type='virtiofs'/>
+  <source dir='/var/home/barrett/storage/code/vms/share'/>
+  <target dir='vmshare'/></filesystem>` device on the domain.
+- Share dir labeled `virt_image_t` so virtiofsd can read through enforcing SELinux. The label is persistent via `semanage fcontext`:
+  ```sh
+  sudo semanage fcontext -a -t virt_image_t '/var/home/barrett/storage/code/vms/share(/.*)?'
+  sudo restorecon -RFv /var/home/barrett/storage/code/vms/share
+  ```
 
-### Guest side (Windows)
-
-1. Mount the virtio-win ISO, browse to `viofs\w10\amd64`, right-click the
-   `.inf` file and Install.
-2. Open **Services** (`services.msc`), find **VirtIO-FS Service**, set startup
-   to **Automatic** and click **Start**.
-3. The shared directory appears as a new drive letter (e.g. `Z:`).
-
-## 6. CPU pinning (Ryzen multi-CCD tuning) - optional
-
-Hardware-specific tuning. Skip on a CPU upgrade until you've re-derived the
-layout. Without pinning the host scheduler does fine; pinning buys 5–10% in
-cache-sensitive workloads on Ryzen by keeping the VM inside one CCD's L3.
-
-Find your CCD layout:
+If rebuilding from scratch, add the filesystem with `virt-xml` (VM shut down):
 
 ```sh
-lscpu -e=CPU,CORE,L3
+sudo virt-xml win10 --add-device --filesystem \
+  type=mount,accessmode=passthrough,driver.type=virtiofs,\
+source.dir=/var/home/barrett/storage/code/vms/share,target.dir=vmshare
 ```
 
-Group by the L3 column. Each L3 value is one CCD. Pick a CCD with at least
-8 cores (16 threads counting SMT siblings) and pin the VM there; let the host
-keep the other CCD(s).
+### Guest side (Windows, one-time)
 
-For the current 5950X (CCD1 = cores 8–15 + siblings 24–31), add inside
-`<domain>` (sibling of `<vcpu>`):
-
-```xml
-<cputune>
-  <vcpupin vcpu='0'  cpuset='8'/>
-  <vcpupin vcpu='1'  cpuset='24'/>
-  <vcpupin vcpu='2'  cpuset='9'/>
-  <vcpupin vcpu='3'  cpuset='25'/>
-  <vcpupin vcpu='4'  cpuset='10'/>
-  <vcpupin vcpu='5'  cpuset='26'/>
-  <vcpupin vcpu='6'  cpuset='11'/>
-  <vcpupin vcpu='7'  cpuset='27'/>
-  <vcpupin vcpu='8'  cpuset='12'/>
-  <vcpupin vcpu='9'  cpuset='28'/>
-  <vcpupin vcpu='10' cpuset='13'/>
-  <vcpupin vcpu='11' cpuset='29'/>
-  <vcpupin vcpu='12' cpuset='14'/>
-  <vcpupin vcpu='13' cpuset='30'/>
-  <vcpupin vcpu='14' cpuset='15'/>
-  <vcpupin vcpu='15' cpuset='31'/>
-  <emulatorpin cpuset='0-7,16-23'/>
-</cputune>
-```
-
-vCPU pairs are physical-core + its SMT sibling so the guest's thread
-abstraction matches the host's. `emulatorpin` parks QEMU's I/O and vfio
-interrupt threads on the *other* CCD so they don't fight the guest for cache.
-
-If you upgrade the CPU: drop the `<cputune>` block until you've redone this on
-the new chip.
+1. Mount the virtio-win ISO inside Windows, browse to `viofs\w10\amd64`, right-click `viofs.inf` and **Install**. This registers `VirtIO-FS Service`.
+2. Open **Services** (`services.msc`), find **VirtIO-FS Service**, set startup to **Automatic**, click **Start**.
+3. The share appears as a new drive letter (typically `Z:`). The `target.dir` tag (`vmshare`) is the share name virtiofs.exe uses internally; it isn't visible in Explorer.
 
 ## Known limitations
 
