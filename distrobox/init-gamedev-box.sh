@@ -1,71 +1,16 @@
 #!/bin/bash
 
-# Initialize gamedev-box distrobox
+# Initialize gamedev-box: per-user setup only.
+# Image-level packages live in gamedev-box.Containerfile.
 
 set -ex
 
 source "$(dirname "$0")/common.sh"
 init_start "gamedev-box"
 
-echo "Installing packages..."
-install_apt_base
+# shell - oh-my-zsh ships in the image at /opt/ohmyzsh
+setup_zsh_from_image
 
-sudo apt-get install -y pkg-config
-
-# graphics / Vulkan
-sudo apt-get install -y \
-    vulkan-tools \
-    libvulkan-dev \
-    vulkan-validationlayers-dev \
-    libgl1-mesa-dev \
-    libglu1-mesa-dev \
-    libegl1-mesa-dev
-
-# windowing / input
-sudo apt-get install -y \
-    libx11-dev \
-    libxrandr-dev \
-    libxi-dev \
-    libxinerama-dev \
-    libxcursor-dev \
-    libwayland-dev
-
-# audio
-sudo apt-get install -y \
-    libasound2-dev \
-    libpulse-dev
-
-# Unreal Engine deps
-sudo apt-get install -y \
-    mono-complete \
-    clang \
-    lld \
-    libsdl2-dev
-
-# Godot deps
-sudo apt-get install -y \
-    scons \
-    libfreetype-dev \
-    libpng-dev \
-    zlib1g-dev \
-    libmbedtls-dev
-
-# languages
-sudo apt-get install -y \
-    dotnet-sdk-8.0 \
-    default-jdk
-
-# Godot
-echo "Installing Godot..."
-mkdir -p "$HOME/.local/bin"
-GODOT_VERSION=$(curl -s https://api.github.com/repos/godotengine/godot/releases/latest | grep -oP '"tag_name":\s*"\K[^"]+' | sed 's/-stable//')
-curl -L "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o /tmp/godot.zip
-unzip -o /tmp/godot.zip -d /tmp/godot
-mv /tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 "$HOME/.local/bin/godot"
-chmod +x "$HOME/.local/bin/godot"
-rm -rf /tmp/godot /tmp/godot.zip
-
-setup_zsh
 setup_symlinks
 init_end
 

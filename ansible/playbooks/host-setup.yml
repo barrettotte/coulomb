@@ -225,6 +225,40 @@
           dest: "{{ ansible_facts['env']['HOME'] }}/.local/share/konsole/VaporOpaque.colorscheme"
 
     # ====================================================
+    # Podman SELinux Labeling (Custom Storage Path)
+    # ====================================================
+    # Podman storage lives at $HOME/storage/code/podman (set via
+    # dotfiles/podman/storage.conf), which is outside Fedora's default
+    # container_var_lib_t fcontext rules. Files there end up as
+    # unlabeled_t and container_t processes can't read them — `podman
+    # run/build` fails with a misleading glibc error ("cannot apply
+    # additional memory protection after relocation") that's really an
+    # SELinux read denial on the image's libc.so.6.
+    #
+    # distrobox masks this at runtime via --security-opt label=disable,
+    # but raw `podman build` (e.g. distrobox/build.sh for the custom
+    # dev-box image) doesn't get that flag and hits the wall. Fix at the
+    # host policy layer instead so SELinux confinement actually works.
+
+    - name: Equivalence custom podman storage to default storage for SELinux
+      ansible.builtin.command: >-
+        semanage fcontext -a -e
+        {{ ansible_facts['env']['HOME'] }}/.local/share/containers/storage
+        {{ ansible_facts['env']['HOME'] }}/storage/code/podman
+      become: true
+      register: podman_fcontext
+      changed_when: "'already' not in podman_fcontext.stderr"
+      failed_when:
+        - podman_fcontext.rc != 0
+        - "'already' not in podman_fcontext.stderr"
+
+    - name: Restore SELinux contexts on podman storage
+      ansible.builtin.command: restorecon -RFv {{ ansible_facts['env']['HOME'] }}/storage/code/podman
+      become: true
+      register: podman_restorecon
+      changed_when: podman_restorecon.stdout | length > 0
+
+    # ====================================================
     # JetBrainsMono Nerd Font
     # ====================================================
 
