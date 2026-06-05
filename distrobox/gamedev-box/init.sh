@@ -1,16 +1,10 @@
 #!/bin/bash
 
-# Initialize gamedev-box: per-user setup only.
-# Image-level packages live in gamedev-box.Containerfile.
-
 set -ex
 
-source "$(dirname "$0")/common.sh"
+source "$(dirname "$0")/../common.sh"
 init_start "gamedev-box"
-
-# shell - oh-my-zsh ships in the image at /opt/ohmyzsh
 setup_zsh_from_image
-
 setup_symlinks
 init_end
 

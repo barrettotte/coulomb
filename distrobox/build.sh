@@ -11,7 +11,7 @@ BOXES=(dev-box embed-box ctf-box gamedev-box radio-box)
 
 build_one() {
     local box="$1"
-    local containerfile="${box}.Containerfile"
+    local containerfile="${box}/Containerfile"
     if [ ! -f "$containerfile" ]; then
         echo "No Containerfile for $box (expected $containerfile)" >&2
         return 1
