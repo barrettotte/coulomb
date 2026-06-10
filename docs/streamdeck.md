@@ -6,6 +6,8 @@ All buttons use the "Run Command" action from the starter pack plugin.
 It was kind of just too cumbersome to use dotfiles for this and its not hard to spend like 10 minutes
 setting this up.
 
+Icons are found in `../assets/streamdeck-icons`.
+
 ## Row 0
 
 | Button | Label | Command |
@@ -22,7 +24,7 @@ setting this up.
 |--------|-------|---------|
 | 1,0 | Obsidian | `flatpak-spawn --host flatpak run md.obsidian.Obsidian` |
 | 1,1 | VS Code | `flatpak-spawn --host distrobox enter dev-box -- code` |
-| 1,2 | - | |
+| 1,2 | Zed | `flatpak-spawn --host /home/barrett/.local/zed.app/bin/zed --new` |
 | 1,3 | - | |
 | 1,4 | - | |
 

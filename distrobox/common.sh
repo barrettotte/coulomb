@@ -7,6 +7,20 @@ HOST_HOME="/home/$USER"
 DOTFILES="$HOST_HOME/repos/coulomb/dotfiles"
 MARKER_FILE="$HOME/.distrobox-initialized"
 
+# Pin steady-state rendering to the NVIDIA RTX 3090 Ti (PCI 0000:0d:00.0).
+# The AMD card is the VFIO passthrough target, so containerised GUI apps must
+# steer to NVIDIA. Idempotent: rewritten on every init_hook so a dotfile edit
+# propagates on next container restart.
+# Caveat: doesn't help Chromium/Electron apps, which probe every
+# /dev/dri/renderDN regardless and crash when AMD's render node disappears.
+sudo tee /etc/profile.d/coulomb-gpu-pin.sh > /dev/null <<'EOF'
+export DRI_PRIME=pci-0000_0d_00_0
+export __GLX_VENDOR_LIBRARY_NAME=nvidia
+export __NV_PRIME_RENDER_OFFLOAD=1
+export MESA_VK_DEVICE_SELECT=10de:2203
+EOF
+sudo chmod 644 /etc/profile.d/coulomb-gpu-pin.sh
+
 # Initialize box - check marker, fix permissions, print header.
 # Usage: init_start "box-name"
 init_start() {
